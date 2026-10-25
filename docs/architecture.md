@@ -5,8 +5,9 @@
 Parkey uses a modular monolith in one pnpm repository. The mobile driver app and
 web operator/administrator workspace are independent entry points. Shared
 contracts live in small workspace packages; database rules and privileged
-operations will live behind trusted backend boundaries. No business features,
-database schema, or cloud resources are implemented by ADI-172.
+operations will live behind trusted backend boundaries. ADI-172 establishes the
+application scaffold; ADI-173 adds the local database foundation. No cloud resources or application booking/authentication flows are
+implemented.
 
 ## Mobile
 
@@ -45,39 +46,43 @@ or additional UI framework is installed.
 
 ## Shared contracts
 
-`@parkey/shared-types` exports one `AppInfo` type, used by both apps through
+`@parkey/shared-types` exports `AppInfo`, used by both apps through
 `workspace:*` and `import type`. Its package export has a `types` condition pointing
 to TypeScript source. There is intentionally no runtime export, application
 dependency, or separate build step. Both apps use bundler-compatible TypeScript
 resolution and erase these imports from their output.
 
-This is an example contract, not a booking or database domain model. Add useful
-contracts only when the backend schema and assigned feature require them.
+ADI-173 also exports type-only vocabularies matching the database verification,
+staff-role, inventory-kind, and reservation-status enums. No runtime helpers or
+full row/API contracts are included.
 
-## Planned Supabase integration
+## Supabase database foundation
 
-The CLI-generated `supabase/config.toml` is the local stack configuration.
-`supabase/migrations` and `supabase/functions` contain workflow instructions only.
-No application migrations, policies, functions, Supabase client SDK, or hosted
-project are included. The local stack requires a running Docker-compatible
-runtime. Its generated configuration and local database password are development
-defaults, never production credentials.
+The CLI-generated `supabase/config.toml` configures PostgreSQL 17 and local
+services. ADI-173 adds a migration, PostGIS geography/GiST indexing, fictional
+local fixtures, and rollback-based pgTAP tests. There is no application Supabase
+client, Edge Function, hosted project, or authentication flow yet. Docker is
+required to run the local stack.
 
-Future Supabase Auth will establish identity. Browser/mobile SDK access must use
-publishable keys and reviewed RLS policies. Storage permissions must be scoped
-to the user and operation. Privileged APIs and Edge Functions must validate
-identity, authorization, and inputs server-side; secrets stay in those runtimes.
+See [database design](database.md) for the entity relationships, evidence and
+inventory model, constraints, test scope, and unresolved decisions. All exposed
+application tables have RLS enabled, no policies, and revoked client grants.
+ADI-174 must implement identity, administrator authority, scoped policies and
+reviewed grants before client access. Privileged secrets remain server-only.
 
-## Planned reservation engine
+## Reservation foundation and future engine
 
-PostgreSQL will be the source of truth. ADI-173 will define the schema, migration
-strategy, booking model, and spatial requirements. PostGIS is planned for
-geographic queries; the scaffold does not enable it or introduce location tables.
+Each inventory row is one dedicated bay or enforceable committed capacity token,
+independent of facility size. Active holds and reservations share one table;
+a PostgreSQL exclusion constraint prevents overlapping active intervals for a
+unit. A locked eligibility check requires verified operators/locations and
+committed inventory. Status changes automatically append immutable event rows.
 
-Reservation concurrency must be enforced atomically through database transactions
-and constraints, designed against overlapping bookings and retried requests.
-Frontend availability displays are advisory. Exact locking, constraint, and
-idempotency designs belong to the schema task, not this foundation.
+ADI-185 must implement the transactional booking API, validate operating hours
+and temporary blocks under a shared locking protocol, explicitly expire holds,
+and handle authorization, retries, idempotent responses and status transitions.
+The schema alone is not a complete booking engine. Frontend availability displays
+remain advisory; no hold duration or cancellation policy is fixed by this phase.
 
 ## Planned payments
 

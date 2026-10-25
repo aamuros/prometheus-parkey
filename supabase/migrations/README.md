@@ -1,13 +1,29 @@
 # Database migrations
 
-No application schema is included in ADI-172. PostgreSQL/PostGIS models and the
-reservation engine start in ADI-173.
+ADI-173 introduces the initial PostgreSQL/PostGIS foundation. Read
+[database design](../../docs/database.md) for entities, assumptions, constraints,
+security boundaries and work deferred to ADI-174/ADI-185.
 
-From the repository root, create a migration with:
+From the repository root, create subsequent migrations with the pinned CLI:
 
 ```sh
 pnpm exec supabase migration new descriptive_name
 ```
 
-Review SQL before applying it locally. Never apply production migrations as part
-of scaffolding. Future exposed tables require RLS and explicit access policies.
+With the Docker daemon running, verify against the disposable local stack:
+
+```sh
+pnpm supabase:start
+# Destructive to local database data only; reapplies migrations and fictional seed.
+pnpm exec supabase db reset --local
+pnpm exec supabase migration list --local
+pnpm exec supabase test db --local
+pnpm exec supabase db lint --local --schema public,parkey_private --fail-on error
+```
+
+See [local setup](../../docs/development.md#local-database-migrations-and-tests).
+Application tables enable RLS without client policies/grants. Tests roll back
+all their fixtures. `supabase/seed.sql` is local-only, explicitly fictional, and
+contains no Auth users or credentials. Do not run remote commands or load seeds
+into hosted databases. Applied/shared migrations must be followed by new migrations,
+not edited in place.

@@ -110,9 +110,9 @@ API `http://127.0.0.1:54321`, database port 54322, and Studio
 `http://127.0.0.1:54323`. The CLI prints local keys/connection details; keep that
 output private. Its local database credentials are development defaults only.
 
-The stack uses generated configuration without application migrations. It does
-not require `supabase/.env`. That template is reserved for future Edge Function
-payment secrets. Read `migrations/README.md` and `functions/README.md` before
+The stack uses the generated configuration plus the ADI-173 migration and
+fictional local seed. It does not require `supabase/.env`. That template is
+reserved for future Edge Function payment secrets. Read `migrations/README.md` and `functions/README.md` before
 adding assigned backend work. Discover command flags with `pnpm exec supabase
 <command> --help`; do not guess CLI flags or run remote commands by default.
 
@@ -120,6 +120,44 @@ If the Docker daemon is unavailable, initialization and CLI checks still work,
 but local services cannot start. Start Docker Desktop/OrbStack and rerun
 `docker info` before attempting `pnpm supabase:start`. Do not switch to an
 experimental native runtime as part of this scaffold.
+
+## Local database migrations and tests
+
+Start your Docker-compatible runtime, then check `docker info`. From the root:
+
+```sh
+pnpm supabase:start
+# DELETES local database data and reapplies migrations plus fictional seed:
+pnpm exec supabase db reset --local
+pnpm exec supabase migration list --local
+pnpm exec supabase test db --local
+pnpm exec supabase db lint --local --schema public,parkey_private --fail-on error
+```
+
+Use these commands only for the disposable local stack. Do not pass `--linked`,
+`--db-url`, run `db push`, or load development seeds into a hosted project.
+The seed is already configured in `supabase/config.toml`. It provides visibly
+fictional operators/locations, dedicated and committed-capacity inventory,
+weekday hours and a temporary closure. It creates no login accounts or secrets.
+The pgTAP suite creates its own fixtures and rolls back all test data/grants.
+Run it again after changing constraints. No environment file is needed.
+
+Create subsequent migration files with the pinned CLI:
+
+```sh
+pnpm exec supabase migration new descriptive_name
+```
+
+Review the SQL, reset locally, rerun the database tests/lint, and inspect the
+migration list. Never edit a migration after it has been applied to a shared
+environment; introduce a subsequent migration instead. Resetting twice is a
+useful reproducibility check on an initial foundation. See [database design](database.md)
+for relationship details, RLS boundaries and the ADI-185 transaction requirements.
+All client database access is deliberately disabled pending ADI-174.
+
+If Docker is unavailable, report migration application, database lint, and pgTAP
+as **blocked**, even if Node checks pass. SQL review or parser checks cannot
+establish runtime constraint/RLS behavior. No hosted fallback is required.
 
 ## Environment configuration
 
@@ -166,8 +204,8 @@ pnpm build:web
 `typecheck` generates the web route tree before checking both apps and the shared
 package. Shared contract imports are validated in both applications. Use
 `pnpm format` to apply formatting. CI runs these same checks on a frozen install
-without Docker, emulators, or secrets. No business unit or E2E suite is included
-because there is no business behavior yet.
+without Docker, emulators, or secrets. The separate database pgTAP suite requires
+local Docker/Supabase and is run with the commands above. No application business unit or E2E suite is included.
 
 ## Troubleshooting
 
