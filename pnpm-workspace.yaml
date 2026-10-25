@@ -1,0 +1,9 @@
+packages:
+  - apps/*
+  - packages/*
+
+# Only these packages may run dependency build scripts.
+allowBuilds:
+  esbuild: true
+  lightningcss: true
+  supabase: true
