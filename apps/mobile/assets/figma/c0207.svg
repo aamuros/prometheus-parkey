@@ -1,0 +1,10 @@
+<svg preserveAspectRatio="none" overflow="visible" style="display: block;" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="icon/roof" clip-path="url(#clip0_0_25)">
+<path id="Vector" d="M8 8H0.666667C0.840803 6.17572 1.68865 4.48183 3.04464 3.24911C4.40064 2.01638 6.16742 1.33333 8 1.33333C9.83258 1.33333 11.5994 2.01638 12.9554 3.24911C14.3114 4.48183 15.1592 6.17572 15.3333 8H8ZM8 8V12.6667C8 13.1971 8.21071 13.7058 8.58579 14.0809C8.96086 14.456 9.46957 14.6667 10 14.6667C10.5304 14.6667 11.0391 14.456 11.4142 14.0809C11.7893 13.7058 12 13.1971 12 12.6667" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" stroke="#111111"/>
+</g>
+<defs>
+<clipPath id="clip0_0_25">
+<rect width="16" height="16" fill="white"/>
+</clipPath>
+</defs>
+</svg>
