@@ -21,6 +21,7 @@ import {
 import type { ParkingReference } from './model'
 import { ParkingGallery, ParkingImage } from './parking-photos'
 import { parkingPhotos } from './photos'
+import { track } from './telemetry'
 import { ModalSheet } from './sheets'
 import { Button, colors, Icon, IconButton, Notice, ui } from './ui'
 
@@ -76,6 +77,11 @@ export function ParkingDetails({
     }
   }
   async function navigate(provider: 'apple' | 'google' | 'waze') {
+    track({
+      name: 'directions_tapped',
+      target_type: 'parking',
+      navigation_provider: provider,
+    })
     if (await open(directionsUrl(anchor(parking.geometry), provider)))
       setDirections(false)
   }

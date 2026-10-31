@@ -4,6 +4,8 @@ packages:
 
 # Only these packages may run dependency build scripts.
 allowBuilds:
+  # Reviewed binary downloader; source-map upload tooling is not used.
+  '@sentry/cli': false
   esbuild: true
   lightningcss: true
   supabase: true

@@ -133,7 +133,9 @@ Implementation lives in `apps/mobile/src/discovery`:
 The former welcome, phone, tabs, account, vehicles, bookings, checkout, confirmation,
 QR pass, booking notifications, fees, and mobile operator-preview components and
 reducers were removed. The independent operator web application remains unchanged.
-Unused original art/font assets remain historical files; none are loaded by V2.
+Unreferenced historical SVG art and bundled Inter/Plus Jakarta Sans fonts were
+removed after checking individual names, paths, and dynamic asset/font references.
+Configured app icon and favicon remain; discovery uses native system fonts.
 
 ## Map renderer and native build
 
@@ -352,3 +354,53 @@ writes and recoverable errors. Failed writes do not display a successful change.
 Retry loading or explicitly clear damaged saved data; contribution drafts use a
 separate key and remain intact. No account, sync, auto-upload, or server writes
 are involved. Device backup behavior is controlled by the operating system.
+
+### Optional analytics and crash diagnostics
+
+Plausible Events API is configured with EXPO_PUBLIC_ANALYTICS_ENDPOINT (an HTTPS
+ingestion endpoint) and EXPO_PUBLIC_ANALYTICS_DOMAIN (the registered hostname).
+Both are required; unset/invalid configuration makes no requests. Register custom
+events and their properties in your existing Plausible service before enabling.
+No hosted service, account, or dashboard was created. This adapter uses fetch,
+not an analytics SDK; it creates no persistent/session identity, cookies, or queue.
+A fixed https://<configured-domain>/app URL is sent, never the current URL.
+Requests time out after five seconds; failures are ignored, with no retries.
+The provider still receives ordinary connection metadata such as IP and user agent;
+review its processing and retention policy before enabling in a release.
+
+Each event includes schema_version=1 and platform (ios/android/web). The only
+additional properties are these bounded enums; no record identifiers, coordinates,
+search text, names, source URLs, or user identifiers are included:
+
+| Event              | Properties / trigger                                                         |
+| ------------------ | ---------------------------------------------------------------------------- |
+| app_open           | Once per cold JS launch                                                      |
+| parking_viewed     | parking_kind, source_kind, verification; explicit record selection           |
+| directions_tapped  | target_type (parking/parked), navigation_provider (in_app/apple/google/waze) |
+| filter_used        | filter (kind/fees), value (supported filter enum)                            |
+| contribution_saved | intent (add/correction), parking_kind, storage=local; successful local write |
+| parked_spot_saved  | Successful local write                                                       |
+| favorite_added     | parking_kind, source_kind; successful local add                              |
+
+EXPO_PUBLIC_SENTRY_DSN accepts a public HTTPS Sentry DSN. Blank/invalid means no
+Sentry import or initialization. @sentry/react-native is pinned to 8.33.0; published
+peer ranges accept the current React, React Native and Expo versions. Framework
+pins were not upgraded. Rebuild the native development client after installation.
+The reviewed @sentry/cli binary download scripts are explicitly denied in workspace
+build policy: source-map upload tooling is not used, and no upload credentials
+are configured.
+
+**Crash coverage is JavaScript-only.** Native capture and native initialization
+remain disabled because native crash envelopes bypass the JavaScript sanitizer.
+Native crash reporting requires equivalent native privacy controls and device
+verification before enabling. Only global JS errors/unhandled rejections are
+collected, with no Promise replacement; non-Hermes native rejection tracking may
+therefore be unavailable. The allowlist reconstructs generic error text and safe
+bundle line/column frames. User data, raw messages, URLs, request bodies, breadcrumbs,
+replay, screenshots, view hierarchy, sessions, logs, profiling and tracing are
+excluded. Detailed source symbolication and native crashes are not verified.
+
+On a rebuilt Android/iOS client, verify cold-launch event deduplication, every
+action event, offline failures, absent-config silence, and sanitized JS crash
+delivery against an authorized existing provider. Never put Sentry auth tokens
+or private analytics API keys in EXPO_PUBLIC_ variables.

@@ -39,6 +39,7 @@ import { MapInformation } from './information'
 import { recordKey } from './local-state'
 import { SavedPlaces } from './saved-places'
 import { useLocalState } from './use-local-state'
+import { track } from './telemetry'
 import {
   anchor,
   distanceLabel,
@@ -124,6 +125,7 @@ export default function Explore() {
     'loading',
   )
   const saving = useRef(false)
+  const savingFavorite = useRef(false)
   const location = useLocation()
   const local = useLocalState()
   const [saveLocationError, setSaveLocationError] = useState<string | null>(
@@ -255,6 +257,11 @@ export default function Explore() {
   }
   function startDirections(record: DiscoveryParking) {
     if (record.sourceKind === 'sample') return
+    track({
+      name: 'directions_tapped',
+      target_type: 'parking',
+      navigation_provider: 'in_app',
+    })
     setRouteTarget({
       name: record.name,
       coordinate: anchor(record.geometry),
@@ -267,17 +274,48 @@ export default function Explore() {
       async () => location.point ?? location.locate(),
     )
   }
+  function viewed(record: DiscoveryParking) {
+    void local.viewed(record)
+    if (record.sourceKind !== 'sample')
+      track({
+        name: 'parking_viewed',
+        parking_kind: record.kind,
+        source_kind: record.sourceKind,
+        verification: record.verification,
+      })
+  }
+  function favorite(record: DiscoveryParking) {
+    if (savingFavorite.current) return
+    savingFavorite.current = true
+    const adding = !local.state.favorites.some(
+      (item) => item.key === recordKey(record),
+    )
+    void local
+      .favorite(record)
+      .then((saved) => {
+        if (saved && adding && record.sourceKind !== 'sample')
+          track({
+            name: 'favorite_added',
+            parking_kind: record.kind,
+            source_kind: record.sourceKind,
+          })
+      })
+      .finally(() => {
+        savingFavorite.current = false
+      })
+  }
   function select(id: string) {
     const record = visible.find((item) => item.id === id)
     if (!record) return
     clearRoute()
     setRouteTarget(null)
     setSelected(record)
-    void local.viewed(record)
+    viewed(record)
     setPanel(null)
     center(anchor(record.geometry))
   }
   function changeFilter(next: DiscoveryFilter) {
+    track({ name: 'filter_used', filter: 'kind', value: next })
     clearRoute()
     setRouteTarget(null)
     setFilter(next)
@@ -363,6 +401,12 @@ export default function Explore() {
       const next = [normalized, ...drafts]
       await writeContributions(next)
       setDrafts(next)
+      track({
+        name: 'contribution_saved',
+        intent: normalized.intent,
+        parking_kind: normalized.kind,
+        storage: 'local',
+      })
       return null
     } catch {
       return 'This preview could not be saved on your device. Free some storage and try again.'
@@ -564,6 +608,11 @@ export default function Explore() {
               selected={feeFilter === 'applies'}
               onPress={() => {
                 setFeeFilter(feeFilter === 'all' ? 'applies' : 'all')
+                track({
+                  name: 'filter_used',
+                  filter: 'fees',
+                  value: feeFilter === 'all' ? 'applies' : 'all',
+                })
                 setSelected(null)
               }}
             >
@@ -762,7 +811,7 @@ export default function Explore() {
               favorite={local.state.favorites.some(
                 (item) => item.key === recordKey(selected),
               )}
-              onFavorite={() => void local.favorite(selected)}
+              onFavorite={() => favorite(selected)}
               favoriteDisabled={local.status !== 'ready' || local.busy}
               storageError={local.error}
               now={now}
@@ -966,7 +1015,10 @@ export default function Explore() {
                 )
                 return
               }
-              if (await local.park(point)) center(point)
+              if (await local.park(point)) {
+                center(point)
+                track({ name: 'parked_spot_saved' })
+              }
             })
           }}
           onCenter={(point) => {
@@ -980,6 +1032,11 @@ export default function Explore() {
             clearRoute()
             setSelected(null)
             setPanel(null)
+            track({
+              name: 'directions_tapped',
+              target_type: 'parked',
+              navigation_provider: 'in_app',
+            })
             setRouteTarget({
               name: 'Where I parked',
               coordinate: parked.coordinate,
@@ -995,7 +1052,7 @@ export default function Explore() {
             setRouteTarget(null)
             setPanel(null)
             setSelected(record)
-            void local.viewed(record)
+            viewed(record)
             center(anchor(record.geometry))
           }}
           onClose={() => setPanel(null)}

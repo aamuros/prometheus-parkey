@@ -1,4 +1,7 @@
 export const config = {
+  analyticsEndpoint: process.env.EXPO_PUBLIC_ANALYTICS_ENDPOINT || '',
+  analyticsDomain: process.env.EXPO_PUBLIC_ANALYTICS_DOMAIN || '',
+  sentryDsn: process.env.EXPO_PUBLIC_SENTRY_DSN || '',
   mapStyle:
     process.env.EXPO_PUBLIC_MAP_STYLE_URL ||
     'https://tiles.openfreemap.org/styles/positron',
