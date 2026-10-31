@@ -1,136 +1,66 @@
 # Architecture
 
-## Foundation and boundaries
+Parkey uses one pnpm monorepo and a modular monolith. The Expo mobile application
+and TanStack Start operator preview are independent frontends. Shared contracts
+are type-only. PostgreSQL/PostGIS owns geographic records; privileged writes
+belong behind trusted server boundaries.
 
-Parkey uses a modular monolith in one pnpm repository. The mobile driver app and
-web operator/administrator workspace are independent entry points. Shared
-contracts live in small workspace packages; database rules and privileged
-operations will live behind trusted backend boundaries. ADI-172 establishes the
-application scaffold; ADI-173 adds the local database foundation. No cloud resources or backend booking/authentication flows are implemented.
-The apps now provide independent, session-only frontend previews with fictional
-data; these previews never access the database.
+## Mobile discovery
 
-## Mobile
+Expo SDK 58 / React 19.3 / React Native 0.88, using Expo Router's `src/app`
+convention and native StyleSheet. `/` is the map workspace; search, details,
+directions, and contributions are overlays, not extra tab/navigation hierarchies.
+No auth provider, reservation reducer, booking routes, or checkout exists in the
+mobile tree. Native system typography replaces the former illustrated layout.
 
-`apps/mobile` was generated with `create-expo-app@5.0.0`, using the official
-`default@sdk-58` template. It retains Expo Router's `src/app` convention, a root
-Stack layout, a single driver-preview route, and native `StyleSheet` styling.
-The preview contains discovery, reservation review, trips, and vehicles, with
-app-local demo data and an immutable reducer under `src/demo`. Native modals
-provide the detail and review flows; no additional native dependency is needed. Starter
-demos and their optional native dependencies were removed. The generated icon
-assets are retained pending a separate branding task.
+MapLibre Native 11.5 renders the basemap, parking markers, street lines, and
+driving route overlays. The Expo config plugin installs the native module in a
+development build. MapLibre GL JS 6.16 handles the same Expo app on web; its
+worker is prepared as a same-origin static asset without Metro overrides.
+Expo Go displays a build requirement. OSRM-compatible requests supply route
+geometry, estimates, and maneuvers, with response validation, cancellation,
+timeouts, and a client cooldown. The public demo is a non-commercial development
+default only; production requires an explicitly configured routing service.
+Routes are requested or recalculated by the user, never automatically on GPS
+updates. No live traffic or voice navigation is implemented. Location and signage photos use
+Expo-supported modules. Local contribution drafts use AsyncStorage; nothing
+uploads automatically. This persistence is not a moderation backend.
 
-Expo SDK 58 determines compatible React 19.3 and React Native 0.88 versions.
-Expo's TypeScript base remains authoritative, with strict checks enabled in the
-app config. Metro automatically detects the pnpm workspace; no custom Metro
-configuration or hoisting workaround is needed. SDK 54 and later support pnpm
-isolated dependencies.
+The data layer combines an attributed OSM pilot snapshot with optional published
+Supabase viewport results, deduplicating identical source URLs in favor of backend
+records. No runtime requests hit Overpass or OSM's data API. Explicit Photon
+search is replaceable by a compatible endpoint. Basemap styles are configurable.
+All provider responses are validated. Empty, network-error, missing-permission,
+loading, and unconfigured-backend states have explicit behavior.
 
-Future components, hooks, and integration modules should be introduced alongside
-the feature that first needs them. Do not create empty framework directories.
+See [mobile details](mobile-discovery.md) for components, native workflow,
+configuration, data licenses, contribution limits, and release prerequisites.
 
-## Web
+## Database
 
-`apps/web` was generated with the official `@tanstack/cli@0.72.0` React/Vite
-starter. TanStack Start provides SSR and the application runtime; TanStack Router
-provides file-based routing, navigation, and route types. Vite 8 builds the client
-and server. Tailwind 4 is integrated through its official Vite plugin.
+The original ADI-173 schema remains intact, including all data and constraints.
+It is documented as [legacy](legacy-reservation-schema.md). V2 adds independent
+sources, geographic parking records, sourced regulations, and private community
+reports. Street records require line geometry; facilities require points. There
+is no operator, inventory, account, or reservation dependency in discovery.
 
-`src/router.tsx` creates the router. `src/routes/__root.tsx` owns document metadata, styles, and the document shell.
-`/` contains the operator preview with overview, reservations, and parking-space
-views. `/about` explains the preview boundaries. App-local demo state under
-`src/demo` drives the lot diagram, search, status changes, and availability
-toggles. There are no data loaders, backend requests, or production operations. `routeTree.gen.ts` is
-generated by the Router CLI before typechecking and by Start during builds/dev.
-It can be regenerated from source; do not edit it manually.
+Anonymous discovery is read-only through RLS and an invoker viewport RPC. Public
+writes and private reports are denied. No remote project, public submission
+function, auth bypass, or payment service was created. See [database design](database.md).
 
-The shared strict base uses bundler module resolution. `verbatimModuleSyntax` is
-left disabled following current Start guidance for client/server import handling.
-No experimental React Server Components, Next.js, TanStack Query, form library,
-or additional UI framework is installed.
+## Web and shared contracts
 
-## Shared contracts
+The existing React/TanStack Start/Router/Vite/Tailwind operator application is
+unchanged. It retains its session-only fictional workspace, file routing in
+`src/routes`, and CLI-generated `routeTree.gen.ts`. It does not use discovery or
+make production booking requests. Its old reservation vocabularies remain in
+`@parkey/shared-types` for compatibility alongside new discovery API contracts.
+All shared imports remain `import type`; the package exports no runtime code.
 
-`@parkey/shared-types` exports `AppInfo`, used by both apps through
-`workspace:*` and `import type`. Its package export has a `types` condition pointing
-to TypeScript source. There is intentionally no runtime export, application
-dependency, or separate build step. Both apps use bundler-compatible TypeScript
-resolution and erase these imports from their output.
+## Validation and deployment boundaries
 
-ADI-173 also exports type-only vocabularies matching the database verification,
-staff-role, inventory-kind, and reservation-status enums. No runtime helpers or
-full row/API contracts are included.
-
-## Supabase database foundation
-
-The CLI-generated `supabase/config.toml` configures PostgreSQL 17 and local
-services. ADI-173 adds a migration, PostGIS geography/GiST indexing, fictional
-local fixtures, and rollback-based pgTAP tests. There is no application Supabase
-client, Edge Function, hosted project, or authentication flow yet. Docker is
-required to run the local stack.
-
-See [database design](database.md) for the entity relationships, evidence and
-inventory model, constraints, test scope, and unresolved decisions. All exposed
-application tables have RLS enabled, no policies, and revoked client grants.
-ADI-174 must implement identity, administrator authority, scoped policies and
-reviewed grants before client access. Privileged secrets remain server-only.
-
-## Reservation foundation and future engine
-
-Each inventory row is one dedicated bay or enforceable committed capacity token,
-independent of facility size. Active holds and reservations share one table;
-a PostgreSQL exclusion constraint prevents overlapping active intervals for a
-unit. A locked eligibility check requires verified operators/locations and
-committed inventory. Status changes automatically append immutable event rows.
-
-ADI-185 must implement the transactional booking API, validate operating hours
-and temporary blocks under a shared locking protocol, explicitly expire holds,
-and handle authorization, retries, idempotent responses and status transitions.
-The schema alone is not a complete booking engine. Frontend availability displays
-remain advisory; no hold duration or cancellation policy is fixed by this phase.
-
-## Planned payments
-
-PayMongo is the planned payment integration, subject to the payment feature's
-requirements. Payment creation and reconciliation belong server-side. Future
-webhooks must verify signatures and handle duplicate delivery idempotently.
-Client redirects or success screens must never be payment authority.
-
-Only explicitly public payment keys may reach clients. Secret keys and webhook
-secrets are documented as blank server-only variables, with no SDK or checkout
-logic installed. No integration responses are fabricated.
-
-## High-level deployment plan
-
-- Mobile: Expo development builds locally, with signing and EAS/store distribution
-  evaluated in a dedicated release task.
-- Web: build the Start client and SSR server for a supported host. A production
-  adapter, runtime entry point, domains, and hosting provider remain undecided;
-  do not treat the client output as a complete static deployment.
-- Backend: a future hosted Supabase project for PostgreSQL, Auth, Storage, and
-  Edge Functions, with separate development/staging/production configuration.
-- CI currently validates source and build output only. It creates no resources
-  and performs no deployment or production migration.
-
-Environment examples are optional and unused by the starter. Public `VITE_` and
-`EXPO_PUBLIC_` variables are bundled; server credentials never use those prefixes.
-
-## Official compatibility references
-
-Checked during scaffolding on 2026-10-25:
-
-- [Expo project creation](https://docs.expo.dev/get-started/create-a-project/): SDK
-  58 is explicitly selected during the SDK 57/58 Expo Go transition.
-- [Expo monorepos](https://docs.expo.dev/guides/monorepos/): automatic Metro support
-  and pnpm isolated dependency support.
-- [TanStack Start getting started](https://tanstack.com/start/latest/docs/framework/react/getting-started):
-  official CLI and React starter.
-- [TanStack Start build setup](https://tanstack.com/start/latest/docs/framework/react/build-from-scratch):
-  Vite plugin order, TypeScript, and module syntax guidance.
-- [Supabase local development](https://supabase.com/docs/guides/local-development/cli/getting-started):
-  project-local CLI installation, initialization, and Docker prerequisite.
-
-Registry engine/peer metadata was also checked before installation. Node 24 LTS
-satisfies SDK 58 and the generated Start/Vite versions. The lockfile pins the
-resolved dependency graph; upgrades must recheck compatibility.
+Strict TypeScript, ESLint, Prettier, focused Node/Python tests, and the web build
+run in CI. PostGIS/pgTAP and native/browser checks require their respective local
+runtimes. No deployment or production migration is automatic. Native projects
+and generated output are ignored. pnpm build-script permissions stay explicit;
+no broad dependency-script approval is enabled.

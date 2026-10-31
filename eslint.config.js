@@ -15,6 +15,7 @@ export default defineConfig(
     '**/routeTree.gen.ts',
     'apps/mobile/android/**',
     'apps/mobile/ios/**',
+    'apps/mobile/public/maplibre/**',
     'supabase/**',
   ]),
   js.configs.recommended,

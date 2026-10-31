@@ -8,16 +8,35 @@
     "scheme": "parkey",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.parkey.discovery"
     },
     "android": {
-      "predictiveBackGestureEnabled": true
+      "predictiveBackGestureEnabled": true,
+      "package": "com.parkey.discovery"
     },
     "web": {
       "output": "static",
       "favicon": "./assets/images/favicon.png"
     },
-    "plugins": ["expo-router", "expo-font"],
+    "plugins": [
+      "expo-router",
+      "@maplibre/maplibre-react-native",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Parkey uses your location to find and show nearby parking. You can also search without sharing your location."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Choose an optional photo of parking signs for your local report preview.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ]
+    ],
     "experiments": {
       "typedRoutes": true
     }

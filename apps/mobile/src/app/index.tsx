@@ -1,1 +1,1 @@
-export { Welcome as default } from '../customer/onboarding'
+export { default } from '../discovery/explore'

@@ -1,29 +1,16 @@
 # Database migrations
 
-ADI-173 introduces the initial PostgreSQL/PostGIS foundation. Read
-[database design](../../docs/database.md) for entities, assumptions, constraints,
-security boundaries and work deferred to ADI-174/ADI-185.
+The foundation migration preserves the legacy reservation model. V2 adds an
+independent discovery model without changing legacy tables or data. Read
+[discovery schema](../../docs/database.md) and [legacy schema](../../docs/legacy-reservation-schema.md).
 
-From the repository root, create subsequent migrations with the pinned CLI:
+Create new migrations using `pnpm exec supabase migration new descriptive_name`.
+Apply only to an authorized environment. For an existing local stack, use
+`pnpm exec supabase migration up --local`, then `pnpm exec supabase test db --local`.
+Tests roll back their fixtures and grants. Never reset valuable data or apply
+local seed files to a hosted database. The two configured seed files separate
+fictional legacy fixtures from the real, attributed, unverified OSM pilot data.
 
-```sh
-pnpm exec supabase migration new descriptive_name
-```
-
-With the Docker daemon running, verify against the disposable local stack:
-
-```sh
-pnpm supabase:start
-# Destructive to local database data only; reapplies migrations and fictional seed.
-pnpm exec supabase db reset --local
-pnpm exec supabase migration list --local
-pnpm exec supabase test db --local
-pnpm exec supabase db lint --local --schema public,parkey_private --fail-on error
-```
-
-See [local setup](../../docs/development.md#local-database-migrations-and-tests).
-Application tables enable RLS without client policies/grants. Tests roll back
-all their fixtures. `supabase/seed.sql` is local-only, explicitly fictional, and
-contains no Auth users or credentials. Do not run remote commands or load seeds
-into hosted databases. Applied/shared migrations must be followed by new migrations,
-not edited in place.
+Public discovery reads require both SELECT grants and RLS. Public writes remain
+revoked. Private reports have no client access. No secure submission endpoint is
+implemented or implied by the migration.

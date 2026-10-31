@@ -1,4 +1,5 @@
 node_modules/
+apps/mobile/public/maplibre/
 pnpm-lock.yaml
 .expo/
 dist/

@@ -12,6 +12,7 @@ coverage/
 expo-env.d.ts
 apps/mobile/android/
 apps/mobile/ios/
+apps/mobile/public/maplibre/
 .metro-health-check*
 
 # Secrets: examples are the only tracked environment files
@@ -28,5 +29,8 @@ apps/mobile/ios/
 # Local tooling
 .DS_Store
 *.log
+__pycache__/
+.playwright-cli/
+output/playwright/
 supabase/.temp/
 supabase/.branches/

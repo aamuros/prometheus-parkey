@@ -20,3 +20,65 @@ export type ReservationStatus =
   | 'cancelled'
   | 'expired'
   | 'no_show'
+
+/** Discovery API contracts. Coordinates follow GeoJSON: longitude, latitude. */
+export type Coordinate = [longitude: number, latitude: number]
+export type ParkingKind = 'street' | 'lot' | 'garage'
+export type StreetSide = 'left' | 'right' | 'both' | 'unknown'
+export type ParkingGeometry =
+  | { type: 'Point'; coordinates: Coordinate }
+  | { type: 'LineString'; coordinates: Coordinate[] }
+
+export type ParkingRegulation = {
+  description: string
+  sourceLabel: string
+  sourceUrl: string | null
+  observedAt: string | null
+}
+
+/** Approved location photography; separate from private contribution evidence. */
+export type ParkingPhoto = {
+  id: string
+  thumbnailUrl: string
+  imageUrl: string
+  caption: string
+  credit: string
+  sourceUrl: string
+  license: string
+}
+
+export type DiscoveryParking = {
+  id: string
+  name: string
+  kind: ParkingKind
+  geometry: ParkingGeometry
+  address: string | null
+  side: StreetSide
+  fees: string | null
+  hours: string | null
+  regulations: ParkingRegulation[]
+  sourceKind: 'osm' | 'parkey' | 'community' | 'sample'
+  sourceLabel: string
+  sourceUrl: string | null
+  license: string
+  sourceUpdatedAt: string | null
+  verification: 'unverified' | 'verified'
+  verifiedAt: string | null
+}
+
+/** Review drafts never confer verification or permission to park. */
+export type ParkingContribution = {
+  id: string
+  intent: 'add' | 'correction'
+  targetId: string | null
+  kind: ParkingKind
+  geometry: ParkingGeometry
+  side: StreetSide
+  name: string
+  restrictions: string
+  hours: string
+  fees: string
+  photoUri: string | null
+  createdAt: string
+  status: 'local_pending_review'
+}

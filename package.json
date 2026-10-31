@@ -18,7 +18,8 @@
     "build:web": "pnpm --filter @parkey/web build",
     "supabase:start": "supabase start",
     "supabase:stop": "supabase stop",
-    "supabase:status": "supabase status"
+    "supabase:status": "supabase status",
+    "test": "node --test apps/mobile/src/discovery/*.test.mjs apps/web/src/demo/workspace.test.mjs && python3 scripts/test-osm-extract.py"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
