@@ -25,13 +25,13 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Parkey uses your location to find and show nearby parking. You can also search without sharing your location."
+          "locationWhenInUsePermission": "Parkey uses your location to show nearby parking, save where you parked, and request directions. You can search without sharing your location."
         }
       ],
       [
         "expo-image-picker",
         {
-          "photosPermission": "Choose an optional photo of parking signs for your local report preview.",
+          "photosPermission": "Choose an optional photo of parking signs to attach to a draft on this device.",
           "cameraPermission": false,
           "microphonePermission": false
         }

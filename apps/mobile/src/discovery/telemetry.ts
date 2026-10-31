@@ -13,6 +13,10 @@ const analytics = createAnalytics({
   domain: config.analyticsDomain,
   platform: Platform.OS,
 })
+export const diagnosticStatus = {
+  analytics: analytics.enabled,
+  crashes: Boolean(publicSentryDsn(config.sentryDsn)),
+}
 let started = false
 
 export function track(event: AnalyticsEvent) {

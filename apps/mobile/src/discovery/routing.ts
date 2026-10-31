@@ -173,7 +173,7 @@ export async function fetchDrivingRoute(
 ): Promise<DrivingRoute> {
   if (!endpoint)
     throw new Error(
-      'In-app routing is unavailable in this build. Try another navigation app.',
+      'Directions aren’t available right now. Please try again later.',
     )
   if (!isCoordinate(from) || !isCoordinate(to))
     throw new Error('A valid start and destination are needed for directions.')
@@ -181,9 +181,12 @@ export async function fetchDrivingRoute(
   try {
     base = new URL(endpoint.endsWith('/') ? endpoint : `${endpoint}/`)
   } catch (error) {
-    throw new Error('The routing service is not configured correctly.', {
-      cause: error,
-    })
+    throw new Error(
+      'Directions aren’t available right now. Please try again later.',
+      {
+        cause: error,
+      },
+    )
   }
   if (
     !['https:', 'http:'].includes(base.protocol) ||
@@ -192,7 +195,9 @@ export async function fetchDrivingRoute(
     base.search ||
     base.hash
   )
-    throw new Error('The routing service is not configured correctly.')
+    throw new Error(
+      'Directions aren’t available right now. Please try again later.',
+    )
   const url = new URL(
     `route/v1/driving/${from.join(',')};${to.join(',')}`,
     base,

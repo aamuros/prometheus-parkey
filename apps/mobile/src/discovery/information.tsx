@@ -10,15 +10,15 @@ import {
   View,
 } from 'react-native'
 
-import { hasDiscoveryBackend } from './config'
 import { clearContributions, writeContributions } from './contributions'
 import { dateLabel } from './model'
+import { developmentSamplesEnabled } from './presentation'
+import { diagnosticStatus } from './telemetry'
 import { mapColors } from './palette'
 import { ModalSheet } from './sheets'
 import { Button, colors, Notice, ui } from './ui'
 
 export function MapInformation({
-  snapshotCount,
   samples,
   onSamples,
   drafts,
@@ -27,7 +27,6 @@ export function MapInformation({
   onStorageReady,
   onClose,
 }: {
-  snapshotCount: number
   samples: boolean
   onSamples: (value: boolean) => void
   drafts: ParkingContribution[]
@@ -36,6 +35,7 @@ export function MapInformation({
   onStorageReady: () => void
   onClose: () => void
 }) {
+  const development = developmentSamplesEnabled(true, process.env.NODE_ENV)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   async function remove(id: string) {
@@ -47,7 +47,7 @@ export function MapInformation({
       setDrafts(next)
       setError(null)
     } catch {
-      setError('The preview could not be deleted. Try again.')
+      setError('The draft could not be deleted. Try again.')
     } finally {
       setBusy(false)
     }
@@ -56,7 +56,7 @@ export function MapInformation({
   return (
     <ModalSheet title="Map information" onClose={onClose}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={ui.title}>Find a place. Check the signs.</Text>
+        <Text style={ui.title}>Parking information</Text>
         <Text style={ui.body}>
           Parkey maps parking facilities and street segments. We don’t track
           vacancies or guarantee parking is permitted.
@@ -73,11 +73,8 @@ export function MapInformation({
         </View>
         <Text style={ui.heading}>Parking data</Text>
         <Text style={ui.muted}>
-          {hasDiscoveryBackend
-            ? 'Parkey records load for the visible map area.'
-            : 'Parkey’s database is not configured. Only the bundled OSM pilot snapshot, if available, is shown.'}{' '}
-          {snapshotCount} OSM pilot records bundled. Source dates appear in each
-          record.
+          Coverage varies by area. Each parking location includes its source and
+          last update date. Check posted signs when you arrive.
         </Text>
         <Text style={ui.small}>
           Street parking appears only where a source identifies it. Many streets
@@ -103,10 +100,14 @@ export function MapInformation({
           ],
           ['OpenFreeMap', 'https://openfreemap.org'],
           ['OpenMapTiles', 'https://openmaptiles.org'],
-          [
-            'OSRM demo usage policy',
-            'https://github.com/Project-OSRM/osrm-backend/wiki/Demo-server',
-          ],
+          ...(development
+            ? [
+                [
+                  'Routing demo usage policy',
+                  'https://github.com/Project-OSRM/osrm-backend/wiki/Demo-server',
+                ],
+              ]
+            : []),
           [
             'Fix the OpenStreetMap data',
             'https://www.openstreetmap.org/fixthemap',
@@ -128,31 +129,62 @@ export function MapInformation({
           </Pressable>
         ))}
         <View style={ui.divider} />
-        <View style={ui.row}>
-          <View style={ui.flex}>
-            <Text style={ui.heading}>Show development samples</Text>
-            <Text style={ui.small}>
-              Replaces records with fictional examples. Directions are disabled.
-            </Text>
-          </View>
-          <Switch
-            accessibilityLabel="Show development sample parking"
-            value={samples}
-            onValueChange={onSamples}
-            trackColor={{ false: colors.border, true: colors.action }}
-            thumbColor={colors.surface}
-          />
-        </View>
-        <Text style={ui.heading}>Local previews · {drafts.length}</Text>
+        {development ? (
+          <>
+            <View style={ui.row}>
+              <View style={ui.flex}>
+                <Text style={ui.heading}>Show development samples</Text>
+                <Text style={ui.small}>
+                  Replaces records with fictional examples. Directions are
+                  disabled.
+                </Text>
+              </View>
+              <Switch
+                accessibilityLabel="Show development sample parking"
+                value={samples}
+                onValueChange={onSamples}
+                trackColor={{ false: colors.border, true: colors.action }}
+                thumbColor={colors.surface}
+              />
+            </View>
+          </>
+        ) : null}
+        <Text style={ui.heading}>Privacy</Text>
+        <Text style={ui.body}>
+          Saved places and drafts stay on this device. No account is required.
+        </Text>
+        <Text style={ui.small}>
+          Search shares your search text and map area with the search provider.
+          Directions share your start and destination with the routing provider,
+          only when you request them.
+        </Text>
+        <Text style={ui.small}>
+          {diagnosticStatus.analytics
+            ? 'Usage reporting is enabled. Events contain app actions, without coordinates, search text, or user identifiers.'
+            : 'Usage reporting is off.'}
+        </Text>
+        <Text style={ui.small}>
+          {diagnosticStatus.crashes
+            ? 'Error reporting is enabled. Reports omit entered text and location.'
+            : 'Error reporting is off.'}
+        </Text>
+        {diagnosticStatus.analytics || diagnosticStatus.crashes ? (
+          <Text style={ui.small}>
+            Reporting services receive connection information such as your IP
+            address.
+          </Text>
+        ) : null}
+        <View style={ui.divider} />
+        <Text style={ui.heading}>Drafts on this device · {drafts.length}</Text>
         <Notice>
-          These previews are stored on this device only. They are not submitted,
-          publicly visible, or automatically uploaded.
+          These drafts are stored on this device only. They are not submitted,
+          shared with Parkey, or automatically uploaded.
         </Notice>
         {storage === 'error' ? (
           <>
             <Text style={ui.muted}>
-              Saved previews couldn’t be read. Clear local previews to start
-              again.
+              Saved drafts couldn’t be read. Clear drafts on this device to
+              start again.
             </Text>
             <Button
               secondary
@@ -165,7 +197,7 @@ export function MapInformation({
                   .catch(() => setError('Local storage could not be cleared.'))
               }}
             >
-              Clear local previews
+              Clear device drafts
             </Button>
           </>
         ) : null}
@@ -174,7 +206,7 @@ export function MapInformation({
             <Text style={ui.heading}>{draft.name}</Text>
             <Text style={ui.small}>
               {draft.intent === 'add' ? 'Missing parking' : 'Correction'} ·
-              Local pending review · {dateLabel(draft.createdAt)}
+              Saved on this device · {dateLabel(draft.createdAt)}
             </Text>
             <Text style={ui.body}>
               {draft.restrictions || 'No restrictions supplied'}
@@ -185,7 +217,7 @@ export function MapInformation({
             </Text>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={`Delete local preview ${draft.name}`}
+              accessibilityLabel={`Delete device draft ${draft.name}`}
               disabled={busy}
               onPress={() => void remove(draft.id)}
               style={({ pressed }) => [styles.link, pressed && ui.pressed]}
@@ -193,7 +225,7 @@ export function MapInformation({
               <Text
                 style={[ui.body, ui.link, busy && { color: colors.disabled }]}
               >
-                Delete preview
+                Delete draft
               </Text>
             </Pressable>
           </View>

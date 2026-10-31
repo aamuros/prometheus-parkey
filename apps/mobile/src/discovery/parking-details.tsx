@@ -21,6 +21,7 @@ import {
 import type { ParkingReference } from './model'
 import { ParkingGallery, ParkingImage } from './parking-photos'
 import { parkingPhotos } from './photos'
+import { displaySourceLabel } from './presentation'
 import { track } from './telemetry'
 import { ModalSheet } from './sheets'
 import { Button, colors, Icon, IconButton, Notice, ui } from './ui'
@@ -116,7 +117,7 @@ export function ParkingDetails({
         {parking.sourceKind === 'sample'
           ? 'Development sample'
           : parking.verification === 'verified'
-            ? 'Source verified'
+            ? 'Verified information'
             : 'Not verified by Parkey'}
       </Text>
     </View>
@@ -215,7 +216,8 @@ export function ParkingDetails({
                   <View key={index} style={{ gap: 3 }}>
                     <Text style={ui.body}>{rule.description}</Text>
                     <Text style={ui.small}>
-                      {rule.sourceLabel} · {dateLabel(rule.observedAt)}
+                      {displaySourceLabel(rule.sourceLabel)} ·{' '}
+                      {dateLabel(rule.observedAt)}
                     </Text>
                   </View>
                 ))
@@ -226,13 +228,16 @@ export function ParkingDetails({
               )}
             </View>
             <View style={ui.divider} />
-            <Detail label="Data source" value={parking.sourceLabel} />
             <Detail
-              label="Source snapshot / observation"
+              label="Source"
+              value={displaySourceLabel(parking.sourceLabel)}
+            />
+            <Detail
+              label="Last updated"
               value={dateLabel(parking.sourceUpdatedAt)}
             />
             <Detail
-              label="Last verification by Parkey"
+              label="Last verified"
               value={dateLabel(parking.verifiedAt)}
             />
             <Text style={ui.small}>{parking.license}</Text>

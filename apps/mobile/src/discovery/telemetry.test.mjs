@@ -345,3 +345,19 @@ test('malformed crash input cannot introduce messages, IDs, unsafe numbers or ar
     minimum,
   )
 })
+
+test('privacy status reflects the same valid configuration used to send events', () => {
+  assert.equal(createAnalytics({ endpoint, domain, platform }).enabled, true)
+  for (const patch of [
+    { endpoint: '' },
+    { domain: '' },
+    { endpoint: 'http://example.test/api/event' },
+    { domain: 'invalid/path' },
+    { platform: 'unknown' },
+  ]) {
+    assert.equal(
+      createAnalytics({ endpoint, domain, platform, ...patch }).enabled,
+      false,
+    )
+  }
+})

@@ -186,7 +186,7 @@ test('unconfigured routing and invalid coordinates do not make network calls', a
   const signal = new AbortController().signal
   await assert.rejects(
     fetchDrivingRoute(origin, destination, signal, { endpoint: '', fetcher }),
-    /unavailable in this build/,
+    /Directions aren’t available right now/,
   )
   await assert.rejects(
     fetchDrivingRoute([14, 121], destination, signal, { endpoint, fetcher }),

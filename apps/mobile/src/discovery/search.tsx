@@ -179,7 +179,7 @@ export function DestinationSearch({
           {status === 'idle' && results.length === 0 ? (
             <Text style={ui.small}>
               Enter at least 3 characters, then tap Search.{'\n'}Search text is
-              sent to the configured Photon provider.
+              sent to the search provider.
             </Text>
           ) : null}
         </View>

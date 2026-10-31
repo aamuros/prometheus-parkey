@@ -165,6 +165,7 @@ export function createAnalytics({
 }) {
   const provider = providerConfiguration(endpoint, domain)
   return {
+    enabled: Boolean(provider && oneOf(platform, ['android', 'ios', 'web'])),
     async track(event: AnalyticsEvent): Promise<void> {
       if (
         !provider ||

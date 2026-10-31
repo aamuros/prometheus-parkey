@@ -1,6 +1,6 @@
 # Parkey
 
-A map-first parking discovery app, piloting in Poblacion, Makati. Open the map,
+A map-first parking discovery app, with parking information around Poblacion, Makati. Open the map,
 search a destination, inspect a facility or street segment, and get directions.
 Discovery requires no account. Unknown parking rules, fees, hours, and verification
 are explicit; Parkey does not promise a vacant space or permission to park.

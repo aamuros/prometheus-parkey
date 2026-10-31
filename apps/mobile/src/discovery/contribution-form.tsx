@@ -68,7 +68,7 @@ export function ContributionForm({
     <ModalSheet
       title={
         saved
-          ? 'Local preview saved'
+          ? 'Draft saved on this device'
           : form.intent === 'correction'
             ? 'Report information'
             : 'Add parking'
@@ -85,14 +85,14 @@ export function ContributionForm({
         >
           {saved ? (
             <>
-              <Text style={ui.title}>Thanks for helping map the gaps.</Text>
+              <Text style={ui.title}>Your draft is saved.</Text>
               <Notice>
                 Saved on this device only. Nothing has been sent to Parkey or
                 queued for automatic upload.
               </Notice>
               <Text style={ui.body}>
-                Status: local preview · pending review. This will not appear as
-                verified parking on the map.
+                This draft hasn’t been submitted for review and won’t appear on
+                the map.
               </Text>
               <Text style={ui.muted}>
                 You can review or delete it in Map information. Photos remain on
@@ -103,8 +103,8 @@ export function ContributionForm({
           ) : (
             <>
               <Notice>
-                Local preview only. Submissions are not sent to a server while
-                community review is being set up.
+                Save a private draft on this device. Sharing drafts with Parkey
+                isn’t available yet.
               </Notice>
               <View style={{ gap: 5 }}>
                 <Text style={ui.eyebrow}>
@@ -222,11 +222,11 @@ export function ContributionForm({
                 </Text>
               ) : null}
               <Button disabled={busy} onPress={() => void save()}>
-                {busy ? 'Saving on device…' : 'Save local preview'}
+                {busy ? 'Saving on device…' : 'Save draft on device'}
               </Button>
               <Text style={ui.small}>
-                Community information needs review. A report does not establish
-                permission to park.
+                A draft does not establish permission to park. Always check
+                posted signs.
               </Text>
             </>
           )}

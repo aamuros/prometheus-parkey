@@ -56,6 +56,10 @@ import {
 import type { Viewport } from './model'
 import ParkingMap from './parking-map'
 import { ParkingDetails } from './parking-details'
+import {
+  developmentSamplesEnabled,
+  millisecondsToNextMinute,
+} from './presentation'
 import { RouteDetails } from './route-details'
 import { sampleParking } from './sample-data'
 import { DestinationSearch } from './search'
@@ -109,7 +113,11 @@ export default function Explore() {
   const [destination, setDestination] = useState<Destination | null>(null)
   const [searchActive, setSearchActive] = useState(false)
   const [panel, setPanel] = useState<'info' | 'saved' | null>(null)
-  const [samples, setSamples] = useState(false)
+  const [samplesRequested, setSamples] = useState(false)
+  const samples = developmentSamplesEnabled(
+    samplesRequested,
+    process.env.NODE_ENV,
+  )
   const [revision, setRevision] = useState(0)
   const [mapRevision, setMapRevision] = useState(0)
   const [mapStatus, setMapStatus] = useState<'loading' | 'ready' | 'error'>(
@@ -171,16 +179,22 @@ export default function Explore() {
     ? `Parking near ${destination.name}`
     : 'Parking in this area'
   const parkingError =
-    'Parking refresh failed. Previously loaded records may be shown; the OSM snapshot is offline data.'
+    'Couldn’t update parking information. Saved map data may still be shown. Check the source dates and try again.'
 
   useEffect(() => {
-    const refresh = () => setNow(new Date())
-    const timer = setInterval(refresh, 15000)
+    let timer: ReturnType<typeof setTimeout>
+    function refresh() {
+      clearTimeout(timer)
+      setNow(new Date())
+      timer = setTimeout(refresh, millisecondsToNextMinute(Date.now()))
+    }
+    timer = setTimeout(refresh, millisecondsToNextMinute(Date.now()))
     const listener = AppState.addEventListener('change', (state) => {
       if (state === 'active') refresh()
+      else clearTimeout(timer)
     })
     return () => {
-      clearInterval(timer)
+      clearTimeout(timer)
       listener.remove()
     }
   }, [])
@@ -384,8 +398,8 @@ export default function Explore() {
   }
   async function save(draft: ParkingContribution) {
     if (storage !== 'ready')
-      return 'Local storage is unavailable. Open Map information to clear damaged previews or try again.'
-    if (saving.current) return 'A preview is already being saved.'
+      return 'Your draft could not be saved. Open Map information to try loading or clear drafts on this device.'
+    if (saving.current) return 'A draft is already being saved.'
     const normalized = {
       ...draft,
       name: draft.name.trim(),
@@ -409,7 +423,7 @@ export default function Explore() {
       })
       return null
     } catch {
-      return 'This preview could not be saved on your device. Free some storage and try again.'
+      return 'This draft could not be saved on your device. Free some storage and try again.'
     } finally {
       saving.current = false
     }
@@ -448,10 +462,12 @@ export default function Explore() {
     location.status === 'locating'
       ? 'Finding your location…'
       : mapStatus === 'loading'
-        ? 'Loading geographic map…'
+        ? 'Loading map…'
         : parking.status === 'loading' && !samples
           ? 'Updating parking…'
-          : `${visible.length} mapped ${visible.length === 1 ? 'location' : 'locations'} · Availability not tracked`
+          : feeFilter === 'applies'
+            ? `${partitions.matched.length} fee applies · ${partitions.unknown.length} fees unknown · Both shown on map`
+            : `${visible.length} mapped ${visible.length === 1 ? 'location' : 'locations'} · Availability not tracked`
 
   return (
     <View
@@ -509,19 +525,11 @@ export default function Explore() {
               label="Open saved places"
               onPress={() => setPanel('saved')}
             />
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Open map information and local previews"
+            <IconButton
+              icon="info"
+              label="Open map information and drafts"
               onPress={() => setPanel('info')}
-              style={({ pressed }) => [
-                styles.pilot,
-                ui.shadow,
-                pressed && ui.pressed,
-              ]}
-            >
-              <Text style={styles.pilotText}>POBLACION PILOT</Text>
-              <Icon name="info" color={colors.brandDeep} size={15} />
-            </Pressable>
+            />
           </View>
         ) : null}
         {sheet.position === 'expanded' && discoveryVisible ? null : drawing ? (
@@ -914,7 +922,7 @@ export default function Explore() {
                       {record.sourceKind === 'sample'
                         ? 'Sample'
                         : record.verification === 'verified'
-                          ? 'Source verified'
+                          ? 'Verified information'
                           : 'Unverified'}
                     </Text>
                     <Text style={ui.small}>
@@ -927,7 +935,7 @@ export default function Explore() {
                     {feeFilter === 'applies' &&
                     partitions.unknown.includes(record) ? (
                       <Text style={ui.eyebrow}>
-                        FEES UNKNOWN · NOT A FILTER MATCH
+                        FEES UNKNOWN · SHOWN SEPARATELY
                       </Text>
                     ) : null}
                     <Text style={ui.small}>
@@ -954,14 +962,14 @@ export default function Explore() {
                         : filteredOut
                           ? 'No matches for this filter.'
                           : outsidePilot
-                            ? 'Outside pilot coverage.'
+                            ? 'Parking information isn’t available here yet.'
                             : 'No mapped parking here yet.'}
                   </Text>
                   <Text style={ui.muted}>
                     {!parking.canQuery
                       ? 'Zoom in to a neighborhood to load parking records.'
                       : outsidePilot
-                        ? 'The bundled parking snapshot covers Poblacion, Makati. Missing coverage does not mean there is no parking here.'
+                        ? 'Current coverage includes Poblacion, Makati. Try that area or add a draft for a missing location. There may be parking here that hasn’t been mapped.'
                         : 'Missing data does not mean parking is allowed or prohibited. Try another area or filter.'}
                   </Text>
                   {!parking.canQuery ? (
@@ -997,7 +1005,7 @@ export default function Explore() {
                         changeSheetPosition('compact')
                       }}
                     >
-                      Return to Poblacion pilot
+                      Explore Poblacion
                     </Button>
                   ) : null}
                   <Button secondary onPress={() => startContribution()}>
@@ -1069,12 +1077,11 @@ export default function Explore() {
       ) : null}
       {panel === 'info' ? (
         <MapInformation
-          snapshotCount={parking.snapshotCount}
           samples={samples}
           onSamples={(enabled) => {
             clearRoute()
             setRouteTarget(null)
-            setSamples(enabled)
+            setSamples(developmentSamplesEnabled(enabled, process.env.NODE_ENV))
             setSelected(null)
             if (enabled) center(PILOT_CENTER)
           }}
@@ -1133,21 +1140,6 @@ const styles = StyleSheet.create({
     width: 7,
     borderRadius: 4,
     backgroundColor: colors.accent,
-  },
-  pilot: {
-    minHeight: 44,
-    borderRadius: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 12,
-    backgroundColor: colors.surface,
-  },
-  pilotText: {
-    fontSize: 9,
-    letterSpacing: 1,
-    fontWeight: '700',
-    color: colors.brandDeep,
   },
   attribution: {
     alignSelf: 'flex-start',

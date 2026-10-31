@@ -36,7 +36,7 @@ export function useRoute() {
       try {
         if (!config.routingUrl)
           throw new Error(
-            'In-app routing is unavailable in this build. Try another navigation app.',
+            'Directions aren’t available right now. Please try again later.',
           )
         const from = await locate()
         if (request.signal.aborted) return

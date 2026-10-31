@@ -1,4 +1,4 @@
-# Parkey V2 mobile discovery
+# Parkey mobile discovery
 
 ## Product and implementation
 
@@ -414,3 +414,20 @@ responses. Location is denied in the automated smoke run so directions must show
 an honest recoverable location error, not fabricated route success. Run the
 documented permission-granted route check separately on a real Android device.
 These flows have been statically checked, not executed on an emulator/device.
+
+### User-facing release experience
+
+The public map uses the Parkey wordmark, Saved places and Map information controls,
+without a pilot badge or setup/configuration messages. Coverage recovery offers
+Explore Poblacion and explains that missing records do not establish parking
+availability or permission. Map information includes privacy/reporting status,
+attribution and drafts stored on this device. Source credits and Last updated
+remain in full details. The historical OSM pilot qualifier is removed only from
+its display label; the source snapshot and contracts are unchanged.
+
+Development sample controls render only in development builds. A second guard
+prevents sample selection from affecting release/test data even if requested.
+Local contributions say Draft saved on this device, explicitly not submitted for
+review, with no implication of a real moderation queue. Hours refresh at minute
+boundaries and on resume. No new account, upload, vacancy claim or public provider
+resource is introduced.
