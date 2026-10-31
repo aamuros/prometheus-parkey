@@ -454,7 +454,10 @@ export default function Explore() {
           : `${visible.length} mapped ${visible.length === 1 ? 'location' : 'locations'} · Availability not tracked`
 
   return (
-    <View style={styles.screen}>
+    <View
+      testID={mapStatus === 'ready' ? 'discovery-map-ready' : 'discovery-map'}
+      style={styles.screen}
+    >
       <ParkingMap
         key={mapRevision}
         records={visible}
@@ -885,6 +888,12 @@ export default function Explore() {
               renderItem={({ item: record }) => (
                 <Pressable
                   accessibilityRole="button"
+                  testID={
+                    record.id ===
+                    ranked.find((item) => item.kind !== 'street')?.id
+                      ? 'parking-row-facility'
+                      : undefined
+                  }
                   key={record.id}
                   onPress={() => select(record.id)}
                   style={({ pressed }) => [

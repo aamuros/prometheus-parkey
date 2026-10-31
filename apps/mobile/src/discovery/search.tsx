@@ -79,6 +79,7 @@ export function DestinationSearch({
       <View style={styles.bar}>
         <Icon name="search" color={colors.brandDeep} size={21} />
         <TextInput
+          testID="destination-query"
           accessibilityLabel="Where do you need parking?"
           placeholder="Where do you need parking?"
           placeholderTextColor={colors.muted}
@@ -116,6 +117,7 @@ export function DestinationSearch({
             <Text style={ui.small}>Search addresses & landmarks</Text>
             <Pressable
               accessibilityRole="button"
+              testID="destination-search-submit"
               disabled={query.trim().length < 3 || status === 'loading'}
               onPress={() => void search()}
               style={({ pressed }) => [
@@ -153,9 +155,10 @@ export function DestinationSearch({
             keyboardShouldPersistTaps="handled"
             style={{ maxHeight: 250 }}
           >
-            {results.map((destination) => (
+            {results.map((destination, index) => (
               <Pressable
                 accessibilityRole="button"
+                testID={`destination-result-${index}`}
                 key={destination.id}
                 onPress={() => {
                   setQuery(destination.name)

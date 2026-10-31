@@ -1,0 +1,17 @@
+appId: com.parkey.discovery
+name: Search for a destination
+---
+- tapOn:
+    id: destination-query
+- inputText: Poblacion Makati
+- tapOn:
+    id: destination-search-submit
+- extendedWaitUntil:
+    visible:
+      id: destination-result-0
+    timeout: 20000
+- tapOn:
+    id: destination-result-0
+- extendedWaitUntil:
+    visible: Lots & garages
+    timeout: 10000

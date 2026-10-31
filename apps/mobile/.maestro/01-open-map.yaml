@@ -1,0 +1,16 @@
+appId: com.parkey.discovery
+name: Open the parking map
+env:
+  APP_URL: parkey://
+---
+- launchApp:
+    clearState: true
+    permissions:
+      all: deny
+- openLink: ${APP_URL}
+- extendedWaitUntil:
+    visible:
+      id: discovery-map-ready
+    timeout: 45000
+- assertVisible:
+    id: destination-query

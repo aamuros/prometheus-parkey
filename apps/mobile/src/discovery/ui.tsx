@@ -98,12 +98,14 @@ export function Button({
   secondary = false,
   disabled = false,
   icon,
+  testID,
 }: {
   children: ReactNode
   onPress: () => void
   secondary?: boolean
   disabled?: boolean
   icon?: IconName
+  testID?: string
 }) {
   const [focused, setFocused] = useState(false)
   const foreground = disabled
@@ -113,6 +115,7 @@ export function Button({
       : colors.surface
   return (
     <Pressable
+      testID={testID}
       accessibilityRole="button"
       accessibilityState={{ disabled }}
       disabled={disabled}

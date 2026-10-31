@@ -1,0 +1,10 @@
+appId: com.parkey.discovery
+name: Request directions
+---
+- tapOn:
+    id: parking-get-directions
+- extendedWaitUntil:
+    visible:
+      id: route-panel
+    timeout: 10000
+- assertVisible: DRIVING ROUTE

@@ -404,3 +404,13 @@ On a rebuilt Android/iOS client, verify cold-launch event deduplication, every
 action event, offline failures, absent-config silence, and sanitized JS crash
 delivery against an authorized existing provider. Never put Sentry auth tokens
 or private analytics API keys in EXPO_PUBLIC_ variables.
+
+### Android smoke flows (Maestro)
+
+See [flow prerequisites, commands, and manual checks](../apps/mobile/.maestro/README.md).
+The smoke flow opens the map, searches a destination, selects a facility, opens
+full details, and taps Get Directions. Search and map data are real provider
+responses. Location is denied in the automated smoke run so directions must show
+an honest recoverable location error, not fabricated route success. Run the
+documented permission-granted route check separately on a real Android device.
+These flows have been statically checked, not executed on an emulator/device.

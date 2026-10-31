@@ -123,7 +123,11 @@ export function ParkingDetails({
   )
   return (
     <>
-      <ScrollView style={ui.flex} contentContainerStyle={styles.content}>
+      <ScrollView
+        testID={expanded ? 'parking-details-expanded' : 'parking-preview'}
+        style={ui.flex}
+        contentContainerStyle={styles.content}
+      >
         <View style={styles.header}>
           <View style={ui.flex}>
             <Text style={ui.eyebrow}>{kindLabels[parking.kind]}</Text>
@@ -183,6 +187,7 @@ export function ParkingDetails({
         {!expanded ? (
           <Pressable
             accessibilityRole="button"
+            testID="parking-full-details"
             onPress={onExpand}
             style={styles.link}
           >
@@ -278,6 +283,7 @@ export function ParkingDetails({
           </Text>
         ) : null}
         <Button
+          testID="parking-get-directions"
           icon="arrow"
           disabled={parking.sourceKind === 'sample'}
           onPress={onDirections}

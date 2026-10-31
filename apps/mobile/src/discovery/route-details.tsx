@@ -33,6 +33,7 @@ export function RouteDetails({
 
   return (
     <View
+      testID="route-panel"
       onLayout={(event) => onHeightChange(event.nativeEvent.layout.height)}
       style={[
         styles.sheet,

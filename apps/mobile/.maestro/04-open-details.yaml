@@ -1,0 +1,16 @@
+appId: com.parkey.discovery
+name: Open full parking details
+---
+- scrollUntilVisible:
+    element:
+      id: parking-full-details
+    direction: DOWN
+    timeout: 10000
+- tapOn:
+    id: parking-full-details
+- extendedWaitUntil:
+    visible:
+      id: parking-details-expanded
+    timeout: 10000
+- assertVisible:
+    id: parking-get-directions

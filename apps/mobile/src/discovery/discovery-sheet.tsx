@@ -142,6 +142,7 @@ export function DiscoverySheet({
       {!selected ? (
         <Pressable
           accessibilityRole="button"
+          testID="parking-results-toggle"
           accessibilityLabel={`${title}. ${summary}. ${position === 'compact' ? 'Show parking results' : 'Collapse results'}`}
           onPress={() =>
             onPositionChange(position === 'compact' ? 'medium' : 'compact')

@@ -1,0 +1,8 @@
+appId: com.parkey.discovery
+name: Parkey Android discovery smoke
+---
+- runFlow: 01-open-map.yaml
+- runFlow: 02-search.yaml
+- runFlow: 03-select-facility.yaml
+- runFlow: 04-open-details.yaml
+- runFlow: 05-directions.yaml

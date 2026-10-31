@@ -1,0 +1,16 @@
+appId: com.parkey.discovery
+name: Select a parking facility
+---
+- tapOn: Lots & garages
+- tapOn:
+    id: parking-results-toggle
+- scrollUntilVisible:
+    element:
+      id: parking-row-facility
+    direction: DOWN
+    timeout: 15000
+    centerElement: true
+- tapOn:
+    id: parking-row-facility
+- assertVisible:
+    id: parking-get-directions
