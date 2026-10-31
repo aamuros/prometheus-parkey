@@ -1,4 +1,3 @@
-import type { DiscoveryParking } from '@parkey/shared-types'
 import {
   ActivityIndicator,
   FlatList,
@@ -14,17 +13,17 @@ import { Button, colors, IconButton, ui } from './ui'
 import type { RouteState } from './use-route'
 
 export function RouteDetails({
-  parking,
+  destinationName,
   state,
   onClose,
   onDetails,
   onRetry,
   onHeightChange,
 }: {
-  parking: DiscoveryParking
+  destinationName: string
   state: RouteState
   onClose: () => void
-  onDetails: () => void
+  onDetails: (() => void) | null
   onRetry: () => void
   onHeightChange: (height: number) => void
 }) {
@@ -48,7 +47,7 @@ export function RouteDetails({
         <View style={ui.flex}>
           <Text style={ui.eyebrow}>DRIVING ROUTE</Text>
           <Text accessibilityRole="header" numberOfLines={2} style={ui.heading}>
-            {parking.name}
+            {destinationName}
           </Text>
         </View>
         <IconButton icon="close" label="Close directions" onPress={onClose} />
@@ -102,11 +101,13 @@ export function RouteDetails({
         Route preview · no live traffic. Confirm the entrance and posted signs.
       </Text>
       <View style={[ui.row, { marginTop: 10 }]}>
-        <View style={ui.flex}>
-          <Button secondary onPress={onDetails}>
-            Parking details
-          </Button>
-        </View>
+        {onDetails ? (
+          <View style={ui.flex}>
+            <Button secondary onPress={onDetails}>
+              Parking details
+            </Button>
+          </View>
+        ) : null}
         <View style={ui.flex}>
           <Button disabled={busy} onPress={onRetry}>
             {state.route ? 'Recalculate' : 'Try again'}

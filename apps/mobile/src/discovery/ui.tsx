@@ -11,6 +11,7 @@ export { colors } from './palette'
 export const detailsPeekHeight = 420
 
 const paths = {
+  star: 'm12 2 3.1 6.3 6.9 1-5 4.9 1.2 6.8-6.2-3.2-6.2 3.2 1.2-6.8-5-4.9 6.9-1L12 2Z',
   search: 'm21 21-5-5M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16',
   locate: 'm12 2 3 7 7 3-7 3-3 7-3-7-7-3 7-3 3-7Z',
   plus: 'M12 5v14M5 12h14',

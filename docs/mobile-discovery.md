@@ -332,3 +332,23 @@ applies matches only an explicit supported source assertion; it does not estimat
 a price. When active, unknown fees appear separately after matches, with an
 explicit count and label. Missing fees never imply free parking. No vacancy,
 amenity, numeric price, or hours filter is offered by this dataset.
+
+### Saved places on this device
+
+The star beside the map wordmark opens saved places. Save where I parked explicitly
+requests the current location; it never silently saves the map center or a previous
+GPS fix. A navy CAR marker distinguishes the saved point. Show it on the map,
+request a driving route back (not walking navigation), replace it, or clear it.
+Routing shares coordinates with the configured routing provider only on request.
+
+Parking details offer a favorites star. Recently viewed keeps the last 10 distinct
+real records, newest first. Samples are excluded. Identity prefers source URL over
+record ID, so an OSM record can resolve after a server UUID change. Saved metadata
+is minimal and never substitutes for current parking details. Records absent from
+loaded data offer Show saved area and removal; this does not assert deletion.
+
+Versioned AsyncStorage data persists across restarts with validation, serialized
+writes and recoverable errors. Failed writes do not display a successful change.
+Retry loading or explicitly clear damaged saved data; contribution drafts use a
+separate key and remain intact. No account, sync, auto-upload, or server writes
+are involved. Device backup behavior is controlled by the operating system.

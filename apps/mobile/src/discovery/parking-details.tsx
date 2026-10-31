@@ -42,6 +42,10 @@ export function ParkingDetails({
   onDirections,
   onClose,
   onReport,
+  favorite,
+  onFavorite,
+  favoriteDisabled,
+  storageError,
 }: {
   parking: DiscoveryParking
   reference: ParkingReference
@@ -51,6 +55,10 @@ export function ParkingDetails({
   onDirections: () => void
   onClose: () => void
   onReport: () => void
+  favorite: boolean
+  onFavorite: () => void
+  favoriteDisabled: boolean
+  storageError: string | null
 }) {
   const photos = useMemo(() => parkingPhotos(parking), [parking])
   const [directions, setDirections] = useState(false)
@@ -122,11 +130,25 @@ export function ParkingDetails({
             </Text>
           </View>
           <IconButton
+            icon="star"
+            label={favorite ? 'Remove from favorites' : 'Add to favorites'}
+            disabled={favoriteDisabled || parking.sourceKind === 'sample'}
+            onPress={onFavorite}
+          />
+          <IconButton
             icon="close"
             label="Back to nearby parking"
             onPress={onClose}
           />
         </View>
+        <Text style={ui.small}>
+          {favorite ? '★ Saved to favorites' : '☆ Save with the star'}
+        </Text>
+        {storageError ? (
+          <Text accessibilityRole="alert" style={[ui.small, ui.error]}>
+            {storageError}
+          </Text>
+        ) : null}
         {expanded ? (
           <>
             <ParkingGallery photos={photos} />

@@ -175,6 +175,7 @@ export default function ParkingMap(props: ParkingMapProps) {
       for (const [id, color, radius] of [
         ['user', mapColors.user, 7],
         ['destination', mapColors.destination, 8],
+        ['parked', mapColors.parked, 10],
       ] as const) {
         instance.addSource(id, {
           type: 'geojson',
@@ -192,6 +193,17 @@ export default function ParkingMap(props: ParkingMapProps) {
           },
         })
       }
+      instance.addLayer({
+        id: 'parked-label',
+        type: 'symbol',
+        source: 'parked',
+        layout: {
+          'text-field': 'CAR',
+          'text-size': 10,
+          'text-allow-overlap': true,
+        },
+        paint: { 'text-color': mapColors.casing },
+      })
       instance.addSource('draft', {
         type: 'geojson',
         data: { type: 'FeatureCollection', features: [] },
@@ -296,6 +308,17 @@ export default function ParkingMap(props: ParkingMapProps) {
           : { type: 'FeatureCollection', features: [] },
       )
   }, [loaded, props.destination])
+
+  useEffect(() => {
+    if (!loaded) return
+    map.current
+      ?.getSource<GeoJSONSource>('parked')
+      ?.setData(
+        props.parkedLocation
+          ? { type: 'Point', coordinates: props.parkedLocation }
+          : { type: 'FeatureCollection', features: [] },
+      )
+  }, [loaded, props.parkedLocation])
 
   return (
     <div

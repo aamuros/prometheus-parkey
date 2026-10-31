@@ -38,8 +38,23 @@ export function useParking(viewport: Viewport, revision: number) {
     () => mergeParking(pilotRecords, remote.records, viewport),
     [remote.records, viewport],
   )
+  const knownRecords = useMemo(
+    () => [
+      ...remote.records,
+      ...pilotRecords.filter(
+        (item) =>
+          !remote.records.some(
+            (record) =>
+              record.id === item.id ||
+              (record.sourceUrl && record.sourceUrl === item.sourceUrl),
+          ),
+      ),
+    ],
+    [remote.records],
+  )
   return {
     records,
+    knownRecords,
     status: canQuery ? remote.status : 'idle',
     truncated: canQuery && remote.truncated,
     canQuery,

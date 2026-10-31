@@ -39,4 +39,5 @@ export const mapColors = {
   userHalo: colors.accent,
   destination: colors.brand,
   draft: colors.amber,
+  parked: colors.ink,
 }

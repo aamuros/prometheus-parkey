@@ -214,6 +214,33 @@ export default function NativeMap(props: ParkingMapProps) {
           />
         </GeoJSONSource>
       ) : null}
+      {props.parkedLocation ? (
+        <GeoJSONSource
+          id="parked"
+          data={{ type: 'Point', coordinates: props.parkedLocation }}
+        >
+          <Layer
+            id="parked-dot"
+            type="circle"
+            paint={{
+              'circle-radius': 10,
+              'circle-color': mapColors.parked,
+              'circle-stroke-color': mapColors.casing,
+              'circle-stroke-width': 3,
+            }}
+          />
+          <Layer
+            id="parked-label"
+            type="symbol"
+            layout={{
+              'text-field': 'CAR',
+              'text-size': 10,
+              'text-allow-overlap': true,
+            }}
+            paint={{ 'text-color': mapColors.casing }}
+          />
+        </GeoJSONSource>
+      ) : null}
       {props.destination ? (
         <GeoJSONSource
           id="destination"

@@ -36,6 +36,9 @@ import { partitionParking } from './filters'
 import type { DiscoveryFilter, FeeFilter } from './filters'
 import { hoursLabel, hoursStatus } from './hours'
 import { MapInformation } from './information'
+import { recordKey } from './local-state'
+import { SavedPlaces } from './saved-places'
+import { useLocalState } from './use-local-state'
 import {
   anchor,
   distanceLabel,
@@ -96,13 +99,15 @@ export default function Explore() {
   }, [])
   const [sheetHeight, setSheetHeight] = useState(120 + insets.bottom)
   const [drawingPanelHeight, setDrawingPanelHeight] = useState(0)
-  const [routeParking, setRouteParking] = useState<DiscoveryParking | null>(
-    null,
-  )
+  const [routeTarget, setRouteTarget] = useState<{
+    name: string
+    coordinate: Coordinate
+    parking: DiscoveryParking | null
+  } | null>(null)
   const [routeHeight, setRouteHeight] = useState(detailsPeekHeight)
   const [destination, setDestination] = useState<Destination | null>(null)
   const [searchActive, setSearchActive] = useState(false)
-  const [panel, setPanel] = useState<'info' | null>(null)
+  const [panel, setPanel] = useState<'info' | 'saved' | null>(null)
   const [samples, setSamples] = useState(false)
   const [revision, setRevision] = useState(0)
   const [mapRevision, setMapRevision] = useState(0)
@@ -120,6 +125,10 @@ export default function Explore() {
   )
   const saving = useRef(false)
   const location = useLocation()
+  const local = useLocalState()
+  const [saveLocationError, setSaveLocationError] = useState<string | null>(
+    null,
+  )
   const { load: loadRoute, clear: clearRoute, ...routeState } = useRoute()
   const parking = useParking(viewport, revision)
   const records = useMemo(
@@ -208,9 +217,9 @@ export default function Explore() {
         setSelected(null)
         return true
       }
-      if (routeParking) {
+      if (routeTarget) {
         clearRoute()
-        setRouteParking(null)
+        setRouteTarget(null)
         return true
       }
       if (sheet.position !== 'compact') {
@@ -223,7 +232,7 @@ export default function Explore() {
   }, [
     drawing,
     selected,
-    routeParking,
+    routeTarget,
     clearRoute,
     sheet.position,
     changeSheetPosition,
@@ -246,7 +255,11 @@ export default function Explore() {
   }
   function startDirections(record: DiscoveryParking) {
     if (record.sourceKind === 'sample') return
-    setRouteParking(record)
+    setRouteTarget({
+      name: record.name,
+      coordinate: anchor(record.geometry),
+      parking: record,
+    })
     setSelected(null)
     setPanel(null)
     void loadRoute(
@@ -258,20 +271,21 @@ export default function Explore() {
     const record = visible.find((item) => item.id === id)
     if (!record) return
     clearRoute()
-    setRouteParking(null)
+    setRouteTarget(null)
     setSelected(record)
+    void local.viewed(record)
     setPanel(null)
     center(anchor(record.geometry))
   }
   function changeFilter(next: DiscoveryFilter) {
     clearRoute()
-    setRouteParking(null)
+    setRouteTarget(null)
     setFilter(next)
     setSelected(null)
   }
   function startContribution(record?: DiscoveryParking) {
     clearRoute()
-    setRouteParking(null)
+    setRouteTarget(null)
     setSelected(null)
     setPanel(null)
     if (record) {
@@ -364,9 +378,9 @@ export default function Explore() {
         : null
 
   const discoveryVisible =
-    !searchActive && !drawing && !routeParking && !form && panel === null
+    !searchActive && !drawing && !routeTarget && !form && panel === null
   const controlsVisible = screenHeight - sheetHeight > insets.top + 200
-  const cameraBottom = routeParking
+  const cameraBottom = routeTarget
     ? routeHeight
     : drawing
       ? drawingPanelHeight
@@ -374,7 +388,7 @@ export default function Explore() {
         ? sheetHeight
         : 0
   const desiredCameraTop =
-    selected || routeParking
+    selected || routeTarget
       ? insets.top +
         (sheet.position === 'expanded' && discoveryVisible ? 36 : 102)
       : 0
@@ -400,17 +414,18 @@ export default function Explore() {
       <ParkingMap
         key={mapRevision}
         records={visible}
-        selectedId={routeParking?.id ?? selected?.id ?? null}
+        selectedId={routeTarget?.parking?.id ?? selected?.id ?? null}
         route={routeState.route}
         target={target}
         cameraPadding={{
           top: cameraTop,
           bottom: cameraBottom,
         }}
+        parkedLocation={local.state.parked?.coordinate ?? null}
         userLocation={location.point}
         destination={
-          routeParking
-            ? anchor(routeParking.geometry)
+          routeTarget
+            ? routeTarget.coordinate
             : (destination?.coordinate ?? null)
         }
         draftPoints={drawing ? points : EMPTY_POINTS}
@@ -442,6 +457,11 @@ export default function Explore() {
               <Text style={styles.brand}>parkey</Text>
               <View style={styles.brandDot} />
             </View>
+            <IconButton
+              icon="star"
+              label="Open saved places"
+              onPress={() => setPanel('saved')}
+            />
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Open map information and local previews"
@@ -487,7 +507,7 @@ export default function Explore() {
               if (active) {
                 setSelected(null)
                 clearRoute()
-                setRouteParking(null)
+                setRouteTarget(null)
               }
             }}
             onSelect={(found) => {
@@ -500,7 +520,7 @@ export default function Explore() {
         {!searchActive &&
         !drawing &&
         !selected &&
-        !routeParking &&
+        !routeTarget &&
         sheet.position !== 'expanded' ? (
           <ScrollView
             horizontal
@@ -676,23 +696,27 @@ export default function Explore() {
           </Button>
         </View>
       ) : null}
-      {routeParking ? (
+      {routeTarget ? (
         <RouteDetails
-          parking={routeParking}
+          destinationName={routeTarget.name}
           state={routeState}
           onHeightChange={setRouteHeight}
           onClose={() => {
             clearRoute()
-            setRouteParking(null)
+            setRouteTarget(null)
           }}
-          onDetails={() => {
-            clearRoute()
-            setSelected(routeParking)
-            setRouteParking(null)
-            center(anchor(routeParking.geometry))
-          }}
+          onDetails={
+            routeTarget.parking
+              ? () => {
+                  clearRoute()
+                  setSelected(routeTarget.parking)
+                  setRouteTarget(null)
+                  center(routeTarget.coordinate)
+                }
+              : null
+          }
           onRetry={() =>
-            void loadRoute(anchor(routeParking.geometry), location.locate)
+            void loadRoute(routeTarget.coordinate, location.locate)
           }
         />
       ) : null}
@@ -735,6 +759,12 @@ export default function Explore() {
               key={selected.id}
               parking={selected}
               reference={reference}
+              favorite={local.state.favorites.some(
+                (item) => item.key === recordKey(selected),
+              )}
+              onFavorite={() => void local.favorite(selected)}
+              favoriteDisabled={local.status !== 'ready' || local.busy}
+              storageError={local.error}
               now={now}
               expanded={sheet.position === 'expanded'}
               onExpand={() => changeSheetPosition('expanded')}
@@ -921,13 +951,63 @@ export default function Explore() {
           )}
         </DiscoverySheet>
       ) : null}
+      {panel === 'saved' ? (
+        <SavedPlaces
+          local={local}
+          records={parking.knownRecords}
+          locating={location.status === 'locating'}
+          locationError={saveLocationError ?? locationMessage}
+          onSaveParked={() => {
+            setSaveLocationError(null)
+            void location.locate().then(async (point) => {
+              if (!point) {
+                setSaveLocationError(
+                  'Your location could not be saved. Check location access and try again.',
+                )
+                return
+              }
+              if (await local.park(point)) center(point)
+            })
+          }}
+          onCenter={(point) => {
+            setPanel(null)
+            setSelected(null)
+            center(point)
+          }}
+          onDirections={() => {
+            const parked = local.state.parked
+            if (!parked) return
+            clearRoute()
+            setSelected(null)
+            setPanel(null)
+            setRouteTarget({
+              name: 'Where I parked',
+              coordinate: parked.coordinate,
+              parking: null,
+            })
+            void loadRoute(
+              parked.coordinate,
+              async () => location.point ?? location.locate(),
+            )
+          }}
+          onSelect={(record) => {
+            clearRoute()
+            setRouteTarget(null)
+            setPanel(null)
+            setSelected(record)
+            void local.viewed(record)
+            center(anchor(record.geometry))
+          }}
+          onClose={() => setPanel(null)}
+        />
+      ) : null}
       {panel === 'info' ? (
         <MapInformation
           snapshotCount={parking.snapshotCount}
           samples={samples}
           onSamples={(enabled) => {
             clearRoute()
-            setRouteParking(null)
+            setRouteTarget(null)
             setSamples(enabled)
             setSelected(null)
             if (enabled) center(PILOT_CENTER)

@@ -10,6 +10,7 @@ export type ParkingMapProps = {
   route: DrivingRoute | null
   target: CameraTarget
   cameraPadding: { top: number; bottom: number }
+  parkedLocation: Coordinate | null
   userLocation: Coordinate | null
   destination: Coordinate | null
   draftPoints: Coordinate[]
