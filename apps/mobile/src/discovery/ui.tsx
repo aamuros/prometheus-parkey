@@ -1,16 +1,21 @@
-import type { ReactNode } from 'react'
-import { useState } from 'react'
-import { Pressable, StyleSheet, Text, View } from 'react-native'
+import type { ComponentRef, ReactNode } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native'
 import type { StyleProp, ViewStyle } from 'react-native'
 import Svg, { Circle, Path } from 'react-native-svg'
 
 import { colors } from './palette'
+import { parkingPin } from './parking-pin'
+import { fonts } from './typography'
 
 export { colors } from './palette'
 
 export const detailsPeekHeight = 420
 
 const paths = {
+  clock: 'M12 6v6l4 2M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0',
+  fees: 'M4 3h16v18l-4-2-4 2-4-2-4 2V3ZM8 8h8M8 12h6',
+  access: 'M5 21V3h14v18M9 21V7h6v14M13 14h.01M3 21h18',
   star: 'm12 2 3.1 6.3 6.9 1-5 4.9 1.2 6.8-6.2-3.2-6.2 3.2 1.2-6.8-5-4.9 6.9-1L12 2Z',
   search: 'm21 21-5-5M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16',
   locate:
@@ -19,6 +24,7 @@ const paths = {
   close: 'm6 6 12 12M6 18 18 6',
   arrow: 'm5 12 14 0m-6-6 6 6-6 6',
   chevron: 'm6 14 6-6 6 6',
+  chevronRight: 'm9 5 7 7-7 7',
   pin: 'M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 0 1 16 0Z',
   layers: 'm12 3 10 6-10 6L2 9l10-6ZM2 14l10 6 10-6',
   street: 'M8 2 5 22M16 2l3 20M12 3v3m0 4v4m0 4v3',
@@ -31,14 +37,31 @@ const paths = {
 }
 export type IconName = keyof typeof paths
 
+export function ParkingPinIcon({ size = 28 }: { size?: number }) {
+  return (
+    <Svg width={size} height={(size * 44) / 36} viewBox="0 0 36 44">
+      <Path
+        d={parkingPin.outline}
+        fill={colors.surface}
+        stroke={colors.brand}
+        strokeWidth={2}
+        strokeLinejoin="round"
+      />
+      <Path d={parkingPin.letter} fill={colors.brand} fillRule="evenodd" />
+    </Svg>
+  )
+}
+
 export function Icon({
   name,
   color = colors.ink,
   size = 22,
+  filled = false,
 }: {
   name: IconName
   color?: string
   size?: number
+  filled?: boolean
 }) {
   return (
     <Svg
@@ -47,12 +70,13 @@ export function Icon({
       viewBox="0 0 24 24"
       fill="none"
       stroke={color}
-      strokeWidth={1.8}
+      strokeWidth={2}
       strokeLinecap="round"
       strokeLinejoin="round"
     >
       {name === 'info' ? <Circle cx={12} cy={12} r={10} /> : null}
-      <Path d={paths[name]} />
+      {name === 'pin' ? <Circle cx={12} cy={10} r={2.5} /> : null}
+      <Path d={paths[name]} fill={name === 'star' && filled ? color : 'none'} />
     </Svg>
   )
 }
@@ -63,19 +87,30 @@ export function IconButton({
   onPress,
   style,
   disabled = false,
+  selected = false,
+  color,
 }: {
   icon: IconName
   label: string
   onPress: () => void
   style?: StyleProp<ViewStyle>
   disabled?: boolean
+  selected?: boolean
+  color?: string
 }) {
   const [focused, setFocused] = useState(false)
+  const target = useRef<ComponentRef<typeof View>>(null)
+  useEffect(() => {
+    if (Platform.OS === 'web' && target.current instanceof HTMLElement)
+      target.current.title = label
+  }, [label])
   return (
     <Pressable
+      ref={target}
       accessibilityRole="button"
       accessibilityLabel={label}
-      accessibilityState={{ disabled }}
+      accessibilityState={{ disabled, selected }}
+      aria-pressed={icon === 'star' ? selected : undefined}
       disabled={disabled}
       onPress={onPress}
       onFocus={() => setFocused(true)}
@@ -83,12 +118,23 @@ export function IconButton({
       style={({ pressed }) => [
         ui.iconButton,
         style,
-        pressed && ui.pressed,
+        selected && ui.choiceSelected,
+        pressed && (selected ? ui.secondaryPressed : ui.iconPressed),
         disabled && ui.disabled,
         focused && ui.focused,
       ]}
     >
-      <Icon name={icon} color={disabled ? colors.disabled : colors.action} />
+      <Icon
+        name={icon}
+        filled={selected}
+        color={
+          disabled
+            ? colors.disabled
+            : selected
+              ? colors.brandDeep
+              : (color ?? colors.action)
+        }
+      />
     </Pressable>
   )
 }
@@ -151,6 +197,7 @@ export function Choice({
     <Pressable
       accessibilityRole="button"
       accessibilityState={{ selected }}
+      aria-pressed={selected}
       onPress={onPress}
       onFocus={() => setFocused(true)}
       onBlur={() => setFocused(false)}
@@ -161,7 +208,7 @@ export function Choice({
         focused && ui.focused,
       ]}
     >
-      <Text style={[ui.choiceText, selected && { color: colors.brandDeep }]}>
+      <Text style={[ui.choiceText, selected && ui.choiceTextSelected]}>
         {children}
       </Text>
     </Pressable>
@@ -172,53 +219,75 @@ export function Notice({ children }: { children: ReactNode }) {
   return (
     <View style={ui.notice}>
       <Icon name="info" color={colors.action} size={18} />
-      <Text style={[ui.small, { flex: 1 }]}>{children}</Text>
+      <Text style={[ui.muted, ui.flex]}>{children}</Text>
     </View>
   )
 }
 
 export const ui = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   flex: { flex: 1 },
-  body: { fontSize: 15, lineHeight: 22, color: colors.ink },
-  muted: { fontSize: 14, lineHeight: 20, color: colors.muted },
-  small: { fontSize: 12, lineHeight: 18, color: colors.muted },
-  link: { color: colors.brandDeep, fontWeight: '500' },
+  body: {
+    fontFamily: fonts.regular,
+    fontSize: 16,
+    lineHeight: 24,
+    color: colors.ink,
+  },
+  muted: {
+    fontFamily: fonts.regular,
+    fontSize: 14,
+    lineHeight: 22,
+    color: colors.muted,
+  },
+  small: {
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    lineHeight: 18,
+    color: colors.muted,
+  },
+  link: { color: colors.brandDeep, fontFamily: fonts.semibold },
   error: { color: colors.error },
   title: {
-    fontSize: 25,
-    lineHeight: 31,
-    fontWeight: '700',
-    letterSpacing: -0.7,
+    fontFamily: fonts.semibold,
+    fontSize: 30,
+    lineHeight: 36,
+    letterSpacing: -0.63,
+    color: colors.ink,
+  },
+  sectionTitle: {
+    fontFamily: fonts.semibold,
+    fontSize: 22,
+    lineHeight: 28,
+    letterSpacing: -0.4,
     color: colors.ink,
   },
   heading: {
-    fontSize: 17,
-    lineHeight: 23,
-    fontWeight: '600',
+    fontFamily: fonts.semibold,
+    fontSize: 16,
+    lineHeight: 24,
+    letterSpacing: -0.2,
     color: colors.ink,
   },
   eyebrow: {
-    fontSize: 11,
-    lineHeight: 16,
-    fontWeight: '700',
-    letterSpacing: 1.4,
+    fontFamily: fonts.semibold,
+    fontSize: 12,
+    lineHeight: 18,
+    letterSpacing: 0.8,
     color: colors.muted,
   },
   iconButton: {
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.canvas,
     alignItems: 'center',
     justifyContent: 'center',
-    boxShadow: `inset 0px 0px 0px 1px ${colors.border}`,
   },
   button: {
     minHeight: 52,
-    paddingHorizontal: 20,
-    paddingVertical: 13,
-    borderRadius: 16,
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: 999,
     backgroundColor: colors.action,
     flexDirection: 'row',
     alignItems: 'center',
@@ -226,34 +295,37 @@ export const ui = StyleSheet.create({
     gap: 10,
   },
   buttonText: {
+    fontFamily: fonts.semibold,
+    flexShrink: 1,
     fontSize: 16,
-    lineHeight: 23,
+    lineHeight: 24,
     color: colors.surface,
-    fontWeight: '600',
+    textAlign: 'center',
   },
   secondary: {
-    backgroundColor: colors.surface,
-    boxShadow: `inset 0px 0px 0px 1px ${colors.brand}`,
+    backgroundColor: colors.selected,
   },
   choice: {
     minHeight: 48,
-    paddingVertical: 11,
-    paddingHorizontal: 17,
-    borderRadius: 14,
+    paddingVertical: 13,
+    paddingHorizontal: 20,
+    borderRadius: 999,
     backgroundColor: colors.surface,
     boxShadow: `inset 0px 0px 0px 1px ${colors.border}`,
   },
   choiceSelected: {
     backgroundColor: colors.selected,
-    boxShadow: `inset 0px 0px 0px 1px ${colors.brand}`,
+    boxShadow: 'none',
   },
   choiceText: {
-    fontSize: 13,
+    fontFamily: fonts.semibold,
+    fontSize: 14,
     lineHeight: 20,
-    fontWeight: '600',
     color: colors.ink,
   },
+  choiceTextSelected: { color: colors.brandDeep },
   pressed: { backgroundColor: colors.soft },
+  iconPressed: { backgroundColor: colors.disabledSurface },
   buttonPressed: { backgroundColor: colors.actionPressed },
   secondaryPressed: { backgroundColor: colors.selectedPressed },
   disabled: {
@@ -266,25 +338,93 @@ export const ui = StyleSheet.create({
     outlineOffset: 2,
   },
   shadow: {
-    boxShadow: `0px 3px 16px ${colors.shadow}, inset 0px 0px 0px 1px ${colors.border}`,
+    boxShadow: `0px 4px 24px ${colors.shadow}`,
   },
   notice: {
     flexDirection: 'row',
-    gap: 9,
-    padding: 12,
-    borderRadius: 12,
+    gap: 12,
+    padding: 16,
+    borderRadius: 16,
     backgroundColor: colors.canvas,
     alignItems: 'flex-start',
   },
   input: {
+    fontFamily: fonts.regular,
     backgroundColor: colors.surface,
     boxShadow: `inset 0px 0px 0px 1px ${colors.border}`,
-    borderRadius: 13,
-    padding: 14,
-    minHeight: 48,
-    fontSize: 15,
-    lineHeight: 21,
+    borderRadius: 12,
+    padding: 16,
+    minHeight: 56,
+    fontSize: 16,
+    lineHeight: 24,
     color: colors.ink,
   },
   divider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.line },
 })
+
+export function UndoToast({
+  message,
+  onUndo,
+}: {
+  message: string
+  onUndo: () => void
+}) {
+  return (
+    <View
+      accessibilityLiveRegion="polite"
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        backgroundColor: colors.ink,
+        paddingHorizontal: 16,
+        borderRadius: 16,
+      }}
+    >
+      <Text style={[ui.body, ui.flex, { color: colors.surface }]}>
+        {message}
+      </Text>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Undo last change"
+        onPress={onUndo}
+        style={({ pressed }) => [
+          { minHeight: 44, minWidth: 44, justifyContent: 'center' },
+          pressed && { backgroundColor: colors.muted },
+        ]}
+      >
+        <Text style={[ui.heading, { color: colors.surface }]}>Undo</Text>
+      </Pressable>
+    </View>
+  )
+}
+export function LoadingRows() {
+  return (
+    <View
+      accessibilityLabel="Loading parking"
+      accessibilityRole="progressbar"
+      style={{ gap: 16, padding: 16 }}
+    >
+      {[0, 1, 2].map((i) => (
+        <View key={i} style={{ gap: 8, paddingVertical: 8 }}>
+          <View
+            style={{
+              height: 16,
+              width: '65%',
+              borderRadius: 8,
+              backgroundColor: colors.disabledSurface,
+            }}
+          />
+          <View
+            style={{
+              height: 12,
+              width: '40%',
+              borderRadius: 6,
+              backgroundColor: colors.line,
+            }}
+          />
+        </View>
+      ))}
+    </View>
+  )
+}

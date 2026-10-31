@@ -1,350 +1,126 @@
-import type { DiscoveryParking } from '@parkey/shared-types'
-import { useMemo, useState } from 'react'
-import {
-  Linking,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native'
+import type { Coordinate, DiscoveryParking } from '@parkey/shared-types'
+import { ScrollView, StyleSheet, Text, View } from 'react-native'
 
-import { hoursLabel, hoursStatus } from './hours'
-import {
-  anchor,
-  dateLabel,
-  directionsUrl,
-  distanceLabel,
-  kindLabels,
-} from './model'
-import type { ParkingReference } from './model'
-import { ParkingGallery, ParkingImage } from './parking-photos'
-import { parkingPhotos } from './photos'
-import { displaySourceLabel, parkingTitle } from './presentation'
-import { track } from './telemetry'
-import { ModalSheet } from './sheets'
-import { Button, colors, Icon, IconButton, Notice, ui } from './ui'
-
-function Detail({ label, value }: { label: string; value: string | null }) {
-  return (
-    <View style={{ gap: 3 }}>
-      <Text style={ui.small}>{label}</Text>
-      <Text style={ui.body}>{value?.trim() || 'Information unavailable'}</Text>
-    </View>
-  )
-}
+import { parkingDetailData } from './parking-detail-data'
+import { fonts } from './typography'
+import { Button, colors, Icon, IconButton, ui } from './ui'
 
 export function ParkingDetails({
   parking,
-  reference,
-  now,
+  location,
   expanded,
-  onExpand,
   onDirections,
-  onClose,
-  onReport,
   favorite,
   onFavorite,
   favoriteDisabled,
   storageError,
 }: {
   parking: DiscoveryParking
-  reference: ParkingReference
-  now: Date
+  location: Coordinate | null
   expanded: boolean
-  onExpand: () => void
   onDirections: () => void
-  onClose: () => void
-  onReport: () => void
   favorite: boolean
   onFavorite: () => void
   favoriteDisabled: boolean
   storageError: string | null
 }) {
-  const photos = useMemo(() => parkingPhotos(parking), [parking])
-  const [directions, setDirections] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  async function open(url: string) {
-    try {
-      await Linking.openURL(url)
-      setError(null)
-      return true
-    } catch {
-      setError(
-        'The link could not be opened. Try again or choose another navigation app.',
-      )
-      return false
-    }
-  }
-  async function navigate(provider: 'apple' | 'google' | 'waze') {
-    track({
-      name: 'directions_tapped',
-      target_type: 'parking',
-      navigation_provider: provider,
-    })
-    if (await open(directionsUrl(anchor(parking.geometry), provider)))
-      setDirections(false)
-  }
-  const summary = (
-    <View style={[{ gap: 6 }, !expanded && ui.flex]}>
-      <Text style={ui.small}>
-        {distanceLabel(
-          reference.coordinate,
-          anchor(parking.geometry),
-          reference.label,
-        )}
-      </Text>
-      <Text style={ui.body} numberOfLines={expanded ? undefined : 2}>
-        Fees: {parking.fees?.trim() || 'Fees unknown'}
-      </Text>
-      <Text style={ui.body}>{hoursLabel(hoursStatus(parking.hours, now))}</Text>
-      <Text style={ui.small}>Based on recorded hours · Asia/Manila</Text>
-      <Text
-        style={[
-          ui.small,
-          {
-            color:
-              parking.verification === 'verified'
-                ? colors.action
-                : colors.muted,
-          },
-        ]}
-      >
-        {parking.sourceKind === 'sample'
-          ? 'Development sample'
-          : parking.verification === 'verified'
-            ? 'Verified information'
-            : 'Not verified by Parkey'}
-      </Text>
-    </View>
-  )
+  const { title, meta, rows } = parkingDetailData(parking, location)
   return (
-    <>
-      <ScrollView
-        testID={expanded ? 'parking-details-expanded' : 'parking-preview'}
-        style={ui.flex}
-        contentContainerStyle={styles.content}
-      >
-        <View style={styles.header}>
-          <View style={ui.flex}>
-            <Text style={ui.eyebrow}>{kindLabels[parking.kind]}</Text>
-            <Text
-              accessibilityRole="header"
-              numberOfLines={2}
-              style={ui.heading}
-            >
-              {parkingTitle(parking)}
-            </Text>
-          </View>
-          <IconButton
-            icon="star"
-            label={favorite ? 'Remove from favorites' : 'Add to favorites'}
-            disabled={favoriteDisabled || parking.sourceKind === 'sample'}
-            onPress={onFavorite}
-          />
-          <IconButton
-            icon="close"
-            label="Back to nearby parking"
-            onPress={onClose}
-          />
-        </View>
-        <Text style={ui.small}>
-          {favorite ? '★ Saved to favorites' : '☆ Save with the star'}
-        </Text>
-        {storageError ? (
-          <Text accessibilityRole="alert" style={[ui.small, ui.error]}>
-            {storageError}
-          </Text>
-        ) : null}
-        {expanded ? (
-          <>
-            <ParkingGallery photos={photos} />
-            {summary}
-          </>
-        ) : (
-          <View style={[ui.row, { alignItems: 'flex-start' }]}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={
-                photos.length
-                  ? 'View parking photos and full details'
-                  : 'Expand full parking details. No photos yet'
-              }
-              onPress={onExpand}
-            >
-              <ParkingImage
-                key={photos[0]?.thumbnailUrl ?? 'no-photo'}
-                photo={photos[0]}
-                thumbnail
-              />
-            </Pressable>
-            {summary}
-          </View>
-        )}
-        {!expanded ? (
-          <Pressable
-            accessibilityRole="button"
-            testID="parking-full-details"
-            onPress={onExpand}
-            style={styles.link}
-          >
-            <Text style={[ui.small, ui.link]}>Photos & full details</Text>
-            <Icon name="chevron" color={colors.brand} size={16} />
-          </Pressable>
-        ) : (
-          <>
-            <Notice>
-              Check posted signs. No space availability or permission to park is
-              guaranteed.
-            </Notice>
-            <Detail label="Source hours · Asia/Manila" value={parking.hours} />
-            <Detail label="Address" value={parking.address} />
-            {parking.kind === 'street' ? (
-              <Detail
-                label="Street side · relative to line direction"
-                value={parking.side === 'unknown' ? null : parking.side}
-              />
-            ) : null}
-            <View style={{ gap: 8 }}>
-              <Text style={ui.heading}>Restrictions & rules</Text>
-              {parking.regulations.length ? (
-                parking.regulations.map((rule, index) => (
-                  <View key={index} style={{ gap: 3 }}>
-                    <Text style={ui.body}>{rule.description}</Text>
-                    <Text style={ui.small}>
-                      {displaySourceLabel(rule.sourceLabel)} ·{' '}
-                      {dateLabel(rule.observedAt)}
-                    </Text>
-                  </View>
-                ))
-              ) : (
-                <Text style={ui.body}>
-                  Information unavailable. Check posted signs.
-                </Text>
-              )}
-            </View>
-            <View style={ui.divider} />
-            <Detail
-              label="Source"
-              value={displaySourceLabel(parking.sourceLabel)}
-            />
-            <Detail
-              label="Last updated"
-              value={dateLabel(parking.sourceUpdatedAt)}
-            />
-            <Detail
-              label="Last verified"
-              value={dateLabel(parking.verifiedAt)}
-            />
-            <Text style={ui.small}>{parking.license}</Text>
-            {parking.sourceUrl ? (
-              <Pressable
-                accessibilityRole="link"
-                style={styles.link}
-                onPress={() => {
-                  if (parking.sourceUrl) void open(parking.sourceUrl)
-                }}
-              >
-                <Text style={[ui.body, ui.link]}>View original source ↗</Text>
-              </Pressable>
-            ) : null}
-            <Pressable
-              accessibilityRole="button"
-              disabled={parking.sourceKind === 'sample'}
-              accessibilityState={{ disabled: parking.sourceKind === 'sample' }}
-              onPress={() => setDirections(true)}
-              style={styles.link}
-            >
-              <Text
-                style={[
-                  ui.body,
-                  ui.link,
-                  parking.sourceKind === 'sample' && { color: colors.disabled },
-                ]}
-              >
-                Open another navigation app ↗
-              </Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              onPress={onReport}
-              style={styles.link}
-            >
-              <Text style={[ui.body, ui.link]}>
-                Report incorrect information
-              </Text>
-            </Pressable>
-          </>
-        )}
-      </ScrollView>
-      <View style={styles.actions}>
-        {error ? (
-          <Text accessibilityRole="alert" style={[ui.small, ui.error]}>
-            {error}
-          </Text>
-        ) : null}
-        <Button
-          testID="parking-get-directions"
-          icon="arrow"
-          disabled={parking.sourceKind === 'sample'}
-          onPress={onDirections}
+    <View
+      testID={expanded ? 'parking-details-expanded' : 'parking-preview'}
+      style={ui.flex}
+    >
+      <View style={styles.summary}>
+        <Text
+          testID="parking-detail-title"
+          accessibilityRole="header"
+          numberOfLines={1}
+          ellipsizeMode="tail"
+          style={styles.title}
         >
-          Get Directions
-        </Button>
-        <Text style={ui.small}>
-          Routes share your start and destination with the routing provider.
+          {title}
+        </Text>
+        <Text style={styles.meta} numberOfLines={1}>
+          {meta}
         </Text>
       </View>
-      {directions ? (
-        <ModalSheet title="Get directions" onClose={() => setDirections(false)}>
-          <View style={styles.content}>
-            <Text style={ui.muted}>
-              Confirm the entrance and posted restrictions when you arrive.
-            </Text>
-            {Platform.OS === 'ios' ? (
-              <Button secondary onPress={() => void navigate('apple')}>
-                Apple Maps ↗
-              </Button>
-            ) : null}
-            <Button secondary onPress={() => void navigate('google')}>
-              Google Maps ↗
-            </Button>
-            <Button secondary onPress={() => void navigate('waze')}>
-              Waze ↗
-            </Button>
-            {error ? (
-              <Text accessibilityRole="alert" style={[ui.small, ui.error]}>
-                {error}
-              </Text>
-            ) : null}
-          </View>
-        </ModalSheet>
+      <ScrollView
+        scrollEnabled={expanded}
+        style={ui.flex}
+        contentContainerStyle={styles.rows}
+      >
+        {expanded
+          ? rows.map((row) => (
+              <View
+                key={`${row.label}:${row.value}`}
+                accessible
+                accessibilityLabel={`${row.label}: ${row.value}`}
+                style={styles.row}
+              >
+                <Icon name={row.icon} size={20} color={colors.muted} />
+                <Text style={[ui.body, ui.flex]}>{row.value}</Text>
+              </View>
+            ))
+          : null}
+      </ScrollView>
+      {storageError ? (
+        <Text
+          accessibilityRole="alert"
+          style={[ui.small, ui.error, styles.summary]}
+        >
+          {storageError}
+        </Text>
       ) : null}
-    </>
+      <View style={styles.actions}>
+        <View style={ui.flex}>
+          <Button
+            testID="parking-get-directions"
+            icon="arrow"
+            disabled={parking.sourceKind === 'sample'}
+            onPress={onDirections}
+          >
+            Directions
+          </Button>
+        </View>
+        <IconButton
+          icon="star"
+          label={favorite ? 'Remove from favorites' : 'Save parking'}
+          selected={favorite}
+          disabled={favoriteDisabled || parking.sourceKind === 'sample'}
+          onPress={onFavorite}
+          style={styles.save}
+        />
+      </View>
+    </View>
   )
 }
-
 const styles = StyleSheet.create({
-  header: {
+  summary: { paddingHorizontal: 16, gap: 4 },
+  title: {
+    fontFamily: fonts.semibold,
+    fontSize: 20,
+    lineHeight: 26,
+    color: colors.ink,
+  },
+  meta: {
+    fontFamily: fonts.regular,
+    fontSize: 14,
+    lineHeight: 20,
+    color: colors.muted,
+  },
+  actions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    gap: 12,
+  },
+  save: { width: 52, height: 52, borderRadius: 26 },
+  rows: { paddingHorizontal: 16, paddingTop: 0, gap: 12 },
+  row: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 12,
-    paddingBottom: 0,
-  },
-  content: { paddingHorizontal: 20, paddingBottom: 16, gap: 14 },
-  actions: {
-    paddingHorizontal: 20,
-    paddingTop: 10,
-    gap: 6,
-    borderTopWidth: 1,
-    borderColor: colors.line,
-  },
-  link: {
-    minHeight: 48,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    borderRadius: 12,
+    paddingTop: 12,
   },
 })

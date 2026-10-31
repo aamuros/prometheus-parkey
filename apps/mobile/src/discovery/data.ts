@@ -138,7 +138,7 @@ export async function searchDestinations(
 ) {
   const url = new URL(endpoint)
   url.searchParams.set('q', query.trim())
-  url.searchParams.set('limit', '5')
+  url.searchParams.set('limit', '6')
   url.searchParams.set('lang', 'en')
   url.searchParams.set('lon', String(center[0]))
   url.searchParams.set('lat', String(center[1]))

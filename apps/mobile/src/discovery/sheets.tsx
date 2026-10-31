@@ -3,6 +3,7 @@ import { Modal, Pressable, StyleSheet, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { colors, IconButton, ui } from './ui'
+import { useReducedMotion } from './use-reduced-motion'
 
 export function ModalSheet({
   title,
@@ -14,10 +15,11 @@ export function ModalSheet({
   onClose: () => void
 }) {
   const insets = useSafeAreaInsets()
+  const reduced = useReducedMotion()
   return (
     <Modal
       transparent
-      animationType="slide"
+      animationType={reduced ? 'none' : 'slide'}
       onRequestClose={onClose}
       statusBarTranslucent
     >
@@ -35,13 +37,9 @@ export function ModalSheet({
             { paddingBottom: Math.max(insets.bottom, 20), maxHeight: '90%' },
           ]}
         >
-          <View
-            style={[
-              ui.row,
-              { paddingHorizontal: 22, paddingTop: 12, paddingBottom: 10 },
-            ]}
-          >
-            <Text accessibilityRole="header" style={[ui.heading, ui.flex]}>
+          <View style={styles.grip} />
+          <View style={[ui.row, styles.header]}>
+            <Text accessibilityRole="header" style={[ui.sectionTitle, ui.flex]}>
               {title}
             </Text>
             <IconButton
@@ -65,10 +63,24 @@ const styles = StyleSheet.create({
   },
   modal: {
     backgroundColor: colors.surface,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
     width: '100%',
     maxWidth: 620,
     alignSelf: 'center',
+    overflow: 'hidden',
+  },
+  grip: {
+    alignSelf: 'center',
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.disabledSurface,
+    marginTop: 12,
+  },
+  header: {
+    paddingHorizontal: 24,
+    paddingTop: 16,
+    paddingBottom: 24,
   },
 })

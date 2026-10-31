@@ -126,6 +126,7 @@ test('map filters and rendering preserve street line geometry and selection', ()
   assert.equal(feature.properties.muted, false)
   const selectedMap = parkingGeoJSON(sampleParking, sampleParking[0].id)
   assert.equal(selectedMap.features[1].properties.muted, true)
+  assert.ok(selectedMap.features.every((item) => item.properties.label === 'P'))
   assert.equal(
     parkingGeoJSON(sampleParking, null).features.some(
       (item) => item.properties.muted,
@@ -243,8 +244,8 @@ test('distance and navigation links use the proper coordinate order', () => {
 
 test('contributions reject invalid descriptions, geometry, corrections, and oversized fields', () => {
   assert.equal(validateContribution(draft, [], now), null)
+  assert.equal(validateContribution({ ...draft, name: ' ' }, [], now), null)
   for (const patch of [
-    { name: ' ' },
     { name: 'a'.repeat(101) },
     { fees: 'x'.repeat(501) },
     { intent: 'correction', targetId: null },
@@ -374,6 +375,7 @@ test('destination search encodes the query, geographic bias, and abort signal', 
     controller.signal,
   )
   assert.equal(called.url.searchParams.get('q'), 'Poblacion & Makati')
+  assert.equal(called.url.searchParams.get('limit'), '6')
   assert.equal(called.url.searchParams.get('lon'), '121.03')
   assert.equal(called.url.searchParams.get('lat'), '14.56')
   assert.equal(called.options.signal, controller.signal)

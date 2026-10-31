@@ -13,9 +13,9 @@ import {
   View,
 } from 'react-native'
 
-import { kindLabels } from './model'
+import { anchor, kindLabels } from './model'
 import { ModalSheet } from './sheets'
-import { Button, Choice, colors, Notice, ui } from './ui'
+import { Button, Choice, colors, ui } from './ui'
 
 export function ContributionForm({
   draft,
@@ -84,150 +84,107 @@ export function ContributionForm({
           contentContainerStyle={styles.content}
         >
           {saved ? (
-            <>
-              <Text style={ui.title}>Your draft is saved.</Text>
-              <Notice>
-                Saved on this device only. Nothing has been sent to Parkey or
-                queued for automatic upload.
-              </Notice>
+            <View style={{ gap: 16 }}>
+              <Text style={ui.title}>Private draft saved</Text>
               <Text style={ui.body}>
-                This draft hasn’t been submitted for review and won’t appear on
-                the map.
+                Saved on this device. Not published or verified.
               </Text>
-              <Text style={ui.muted}>
-                You can review or delete it in Map information. Photos remain on
-                this device and may be removed by the system.
-              </Text>
-              <Button onPress={onClose}>Back to map</Button>
-            </>
-          ) : (
+              <Button onPress={onClose}>Show on map</Button>
+            </View>
+          ) : form.intent === 'add' ? (
             <>
-              <Notice>
-                Save a private draft on this device. Sharing drafts with Parkey
-                isn’t available yet.
-              </Notice>
-              <View style={{ gap: 5 }}>
-                <Text style={ui.eyebrow}>
-                  {kindLabels[form.kind].toUpperCase()}
-                </Text>
-                <Text style={ui.small}>
-                  {form.geometry.type === 'Point'
-                    ? 'Map point selected'
-                    : `${form.geometry.coordinates.length} street points selected`}
-                </Text>
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={() => onAdjust(form)}
-                  style={({ pressed }) => [styles.link, pressed && ui.pressed]}
-                >
-                  <Text style={[ui.heading, ui.link]}>Adjust on map</Text>
-                </Pressable>
+              <Text style={ui.small}>
+                Private draft · saved on this device only
+              </Text>
+              <View style={[ui.row, { flexWrap: 'wrap' }]}>
+                {(['lot', 'garage', 'street'] as const).map((kind) => (
+                  <Choice
+                    key={kind}
+                    selected={form.kind === kind}
+                    onPress={() => {
+                      const next = {
+                        ...form,
+                        kind,
+                        geometry:
+                          kind !== 'street' &&
+                          form.geometry.type === 'LineString'
+                            ? {
+                                type: 'Point' as const,
+                                coordinates: anchor(form.geometry),
+                              }
+                            : form.geometry,
+                      }
+                      if (kind === 'street' && form.geometry.type === 'Point')
+                        onAdjust(next)
+                      else setForm(next)
+                    }}
+                  >
+                    {kindLabels[kind]}
+                  </Choice>
+                ))}
               </View>
               <Field
-                label={
-                  form.kind === 'street'
-                    ? 'Street name or description'
-                    : 'Parking name or description'
-                }
+                label="Name (optional)"
                 value={form.name}
                 maxLength={100}
                 onChange={(name) =>
                   setForm((current) => ({ ...current, name }))
                 }
               />
-              {form.kind === 'street' ? (
-                <View style={{ gap: 8 }}>
-                  <Text style={ui.small}>
-                    Street side · following the points you drew
-                  </Text>
-                  <View style={[ui.row, { flexWrap: 'wrap', gap: 6 }]}>
-                    {(['unknown', 'left', 'right', 'both'] as const).map(
-                      (side) => (
-                        <Choice
-                          key={side}
-                          selected={form.side === side}
-                          onPress={() =>
-                            setForm((current) => ({ ...current, side }))
-                          }
-                        >
-                          {side === 'unknown'
-                            ? 'Not sure'
-                            : side[0]?.toUpperCase() + side.slice(1)}
-                        </Choice>
-                      ),
-                    )}
-                  </View>
-                </View>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => onAdjust(form)}
+                style={styles.link}
+              >
+                <Text style={[ui.body, ui.link]}>Adjust location on map</Text>
+              </Pressable>
+              {error ? (
+                <Text accessibilityRole="alert" style={[ui.body, ui.error]}>
+                  {error}
+                </Text>
               ) : null}
+              <Button disabled={busy} onPress={() => void save()}>
+                {busy ? 'Saving…' : 'Save private draft'}
+              </Button>
+            </>
+          ) : (
+            <>
               <Field
-                label={
-                  form.intent === 'correction'
-                    ? 'What needs correcting? (required)'
-                    : 'Restrictions / posted signs (optional)'
+                label="Parking name"
+                value={form.name}
+                maxLength={100}
+                onChange={(name) =>
+                  setForm((current) => ({ ...current, name }))
                 }
-                placeholder="Only what you have observed or read on a sign"
+              />
+              <Field
+                label="What needs correcting?"
                 value={form.restrictions}
                 onChange={(restrictions) =>
                   setForm((current) => ({ ...current, restrictions }))
                 }
                 multiline
               />
-              <Field
-                label="Operating hours (optional)"
-                placeholder="Leave blank if unknown"
-                value={form.hours}
-                onChange={(hours) =>
-                  setForm((current) => ({ ...current, hours }))
-                }
-              />
-              <Field
-                label="Fees (optional)"
-                placeholder="Only if shown on a sign or other source"
-                value={form.fees}
-                onChange={(fees) =>
-                  setForm((current) => ({ ...current, fees }))
-                }
-              />
-              <View style={{ gap: 10 }}>
-                {form.photoUri ? (
-                  <>
-                    <Image
-                      source={{ uri: form.photoUri }}
-                      accessibilityLabel="Attached parking signage"
-                      style={styles.photo}
-                      resizeMode="contain"
-                    />
-                    <Button
-                      secondary
-                      onPress={() =>
-                        setForm((current) => ({ ...current, photoUri: null }))
-                      }
-                    >
-                      Remove photo
-                    </Button>
-                  </>
-                ) : (
-                  <Button secondary icon="camera" onPress={() => void photo()}>
-                    Attach signage photo
-                  </Button>
-                )}
-                <Text style={ui.small}>
-                  Avoid faces, number plates, and personal details. A photo is
-                  optional.
-                </Text>
-              </View>
+              {form.photoUri ? (
+                <Image
+                  source={{ uri: form.photoUri }}
+                  accessibilityLabel="Attached parking signage"
+                  style={styles.photo}
+                  resizeMode="contain"
+                />
+              ) : (
+                <Button secondary icon="camera" onPress={() => void photo()}>
+                  Attach signage photo
+                </Button>
+              )}
               {error ? (
-                <Text accessibilityRole="alert" style={styles.error}>
+                <Text accessibilityRole="alert" style={[ui.body, ui.error]}>
                   {error}
                 </Text>
               ) : null}
               <Button disabled={busy} onPress={() => void save()}>
-                {busy ? 'Saving on device…' : 'Save draft on device'}
+                Save correction on device
               </Button>
-              <Text style={ui.small}>
-                A draft does not establish permission to park. Always check
-                posted signs.
-              </Text>
             </>
           )}
         </ScrollView>
@@ -254,7 +211,7 @@ function Field({
   const [focused, setFocused] = useState(false)
   return (
     <View style={{ gap: 7 }}>
-      <Text style={ui.small}>{label}</Text>
+      <Text style={ui.muted}>{label}</Text>
       <TextInput
         accessibilityLabel={label}
         value={value}
@@ -276,7 +233,7 @@ function Field({
   )
 }
 const styles = StyleSheet.create({
-  content: { paddingHorizontal: 22, paddingBottom: 20, gap: 20 },
+  content: { paddingHorizontal: 24, paddingBottom: 24, gap: 24 },
   link: { minHeight: 44, justifyContent: 'center', borderRadius: 12 },
   photo: {
     height: 150,
@@ -284,5 +241,4 @@ const styles = StyleSheet.create({
     backgroundColor: colors.soft,
     borderRadius: 14,
   },
-  error: { fontSize: 14, lineHeight: 20, color: colors.error },
 })

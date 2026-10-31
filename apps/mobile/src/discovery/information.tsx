@@ -1,5 +1,5 @@
 import type { ParkingContribution } from '@parkey/shared-types'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   Linking,
   Pressable,
@@ -16,7 +16,7 @@ import { developmentSamplesEnabled } from './presentation'
 import { diagnosticStatus } from './telemetry'
 import { mapColors } from './palette'
 import { ModalSheet } from './sheets'
-import { Button, colors, Notice, ui } from './ui'
+import { Button, colors, Notice, ParkingPinIcon, UndoToast, ui } from './ui'
 
 export function MapInformation({
   samples,
@@ -38,6 +38,15 @@ export function MapInformation({
   const development = developmentSamplesEnabled(true, process.env.NODE_ENV)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [toast, setToast] = useState<{
+    message: string
+    undo: () => void
+  } | null>(null)
+  useEffect(() => {
+    if (!toast) return
+    const timer = setTimeout(() => setToast(null), 5000)
+    return () => clearTimeout(timer)
+  }, [toast])
   async function remove(id: string) {
     if (busy) return
     setBusy(true)
@@ -45,6 +54,22 @@ export function MapInformation({
       const next = drafts.filter((draft) => draft.id !== id)
       await writeContributions(next)
       setDrafts(next)
+      const removed = drafts.find((draft) => draft.id === id)
+      if (removed)
+        setToast({
+          message: 'Draft deleted',
+          undo: () => {
+            const restored = [removed, ...next]
+            void writeContributions(restored)
+              .then(() => {
+                setDrafts(restored)
+                setToast(null)
+              })
+              .catch(() =>
+                setError('The draft could not be restored. Try again.'),
+              )
+          },
+        })
       setError(null)
     } catch {
       setError('The draft could not be deleted. Try again.')
@@ -55,6 +80,11 @@ export function MapInformation({
 
   return (
     <ModalSheet title="Map information" onClose={onClose}>
+      {toast ? (
+        <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
+          <UndoToast message={toast.message} onUndo={toast.undo} />
+        </View>
+      ) : null}
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={ui.title}>Parking information</Text>
         <Text style={ui.body}>
@@ -62,12 +92,8 @@ export function MapInformation({
           vacancies or guarantee parking is permitted.
         </Text>
         <View style={[ui.row, { flexWrap: 'wrap' }]}>
-          <View style={styles.legendPoint}>
-            <Text style={{ color: mapColors.facilityLabel, fontWeight: '700' }}>
-              P
-            </Text>
-          </View>
-          <Text style={ui.body}>Lot · G for garage</Text>
+          <ParkingPinIcon />
+          <Text style={ui.body}>Lot or garage</Text>
           <View style={styles.legendLine} />
           <Text style={ui.body}>Street</Text>
         </View>
@@ -151,12 +177,14 @@ export function MapInformation({
         ) : null}
         <Text style={ui.heading}>Privacy</Text>
         <Text style={ui.body}>
-          Saved places and drafts stay on this device. No account is required.
+          Saved places, recent searches, and drafts stay on this device. No
+          account is required.
         </Text>
         <Text style={ui.small}>
-          Search shares your search text and map area with the search provider.
-          Directions share your start and destination with the routing provider,
-          only when you request them.
+          Search text is sent to the search provider. Search shares your search
+          text and map area with Photon after you type at least 3 characters or
+          submit a search. Directions share your start and destination with the
+          routing provider, only when you request them.
         </Text>
         <Text style={ui.small}>
           {diagnosticStatus.analytics
@@ -203,18 +231,27 @@ export function MapInformation({
         ) : null}
         {drafts.map((draft) => (
           <View key={draft.id} style={{ gap: 6 }}>
-            <Text style={ui.heading}>{draft.name}</Text>
+            <Text style={ui.heading}>
+              {draft.name.trim() ||
+                (draft.kind === 'street'
+                  ? 'Street parking'
+                  : draft.kind === 'garage'
+                    ? 'Garage'
+                    : 'Parking lot')}
+            </Text>
             <Text style={ui.small}>
               {draft.intent === 'add' ? 'Missing parking' : 'Correction'} ·
               Saved on this device · {dateLabel(draft.createdAt)}
             </Text>
-            <Text style={ui.body}>
-              {draft.restrictions || 'No restrictions supplied'}
-            </Text>
-            <Text style={ui.small}>
-              Hours: {draft.hours || 'Unknown'} · Fees:{' '}
-              {draft.fees || 'Unknown'}
-            </Text>
+            {draft.restrictions.trim() ? (
+              <Text style={ui.body}>{draft.restrictions}</Text>
+            ) : null}
+            {draft.hours.trim() ? (
+              <Text style={ui.small}>{draft.hours}</Text>
+            ) : null}
+            {draft.fees.trim() ? (
+              <Text style={ui.small}>{draft.fees}</Text>
+            ) : null}
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={`Delete device draft ${draft.name}`}
@@ -240,17 +277,8 @@ export function MapInformation({
   )
 }
 const styles = StyleSheet.create({
-  content: { paddingHorizontal: 22, paddingBottom: 22, gap: 16 },
+  content: { paddingHorizontal: 24, paddingBottom: 24, gap: 16 },
   link: { minHeight: 44, justifyContent: 'center', borderRadius: 12 },
-  legendPoint: {
-    height: 26,
-    width: 26,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 13,
-    backgroundColor: mapColors.facility,
-    boxShadow: `inset 0px 0px 0px 2px ${mapColors.facilityOutline}`,
-  },
   legendLine: {
     width: 24,
     height: 5,

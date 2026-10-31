@@ -26,7 +26,9 @@ import { anchor, distanceLabel, kindLabels } from './model.ts'
 import type { ParkingReference } from './model.ts'
 
 /** Presentation only: preserve names and provenance on the underlying record. */
-export function parkingTitle(parking: DiscoveryParking): string {
+export function parkingTitle(
+  parking: Pick<DiscoveryParking, 'name' | 'kind'>,
+): string {
   const name = parking.name.trim()
   return !name ||
     /^Unnamed (?:parking|street parking|garage)(?: · .+)?$/i.test(name)

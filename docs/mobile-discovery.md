@@ -210,12 +210,31 @@ production hosting. Production builds leave routing disabled until an
 owned/licensed endpoint is explicitly configured. MapLibre and OSRM are free
 software; hosting a routing server or using a provider can cost money.
 
-Requests happen only after Get Directions or Recalculate. The UI discloses that
-start and destination coordinates go to the routing provider. Location access is
-required for the start. Requests use a 1.1-second per-client cooldown, a 15-second
-network timeout, and cancellation when closing or changing the route. Native
-requests identify Parkey in the user agent; browser requests use their normal
-user agent and referrer. No automatic retries or rerouting run on GPS updates.
+Directions opens a preview using an existing location fix or the labeled map
+center; it never asks for location permission. Start explains the reason and
+starts a high-accuracy foreground location watch. Permission denial leaves the
+preview open with Google Maps, Apple Maps, and Waze links. Routing consent
+discloses that start and destination go directly to the configured routing
+provider, never through Parkey's backend.
+
+Navigation ignores fixes worse than 100 m, smooths the dot and snaps it within
+25 m of the route. Maneuver progress and the gray traveled line are calculated
+on-device. Deviation beyond 50 m for at least five seconds triggers a new route,
+with at least 15 seconds between automatic requests. Requests have a 15-second
+timeout; changing or ending navigation aborts pending work. Public demo endpoints
+remain for modest non-commercial development testing only; throttling does not
+make them suitable for production navigation.
+
+The camera follows until a user gesture; Re-center resumes following. Web uses
+the Screen Wake Lock API where supported and reacquires it on return to a visible
+tab. End, X, Escape, and browser Back stop the watch and release the lock, with a
+five-second Resume toast. Tracking samples exist only in memory; navigation
+freezes backend parking-viewport queries and never writes GPS history to storage
+or the URL. Arrival within 30 m (or the route endpoint) stops tracking. I parked
+here explicitly saves one car coordinate and timestamp on this device; Next
+nearest uses already loaded real records of the same parking type, excluding
+session rejections. Availability is not inferred. No notification timers are
+offered because parking notifications are not implemented.
 
 Routes are validated before rendering; missing routes, invalid responses, HTTP
 failures, location failures, and timeouts have explicit states. The route line
@@ -356,9 +375,11 @@ amenity, numeric price, or hours filter is offered by this dataset.
 
 The star beside the discovery sheet handle opens saved places. Save where I parked explicitly
 requests the current location; it never silently saves the map center or a previous
-GPS fix. A navy CAR marker distinguishes the saved point. Show it on the map,
-request a driving route back (not walking navigation), replace it, or clear it.
-Routing shares coordinates with the configured routing provider only on request.
+GPS fix. A navy Your car marker distinguishes the saved point. The home chip
+shows its age and opens walking directions in Google Maps; the OSRM driving
+profile is never presented as a walking route. Replace or clear the pin in Saved
+places. Only this explicitly saved point and timestamp are persisted, with no
+tracking history.
 
 Parking details offer a favorites star. Recently viewed keeps the last 10 distinct
 real records, newest first. Samples are excluded. Identity prefers source URL over

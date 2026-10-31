@@ -226,7 +226,10 @@ export function validateContribution(
   }
   if (draft.intent === 'correction' && !draft.targetId)
     return 'Choose the parking record to report.'
-  if (draft.name.trim().length < 3 || draft.name.length > 100)
+  if (
+    (draft.intent === 'correction' && draft.name.trim().length < 3) ||
+    draft.name.length > 100
+  )
     return 'Use a name or street description between 3 and 100 characters.'
   if (
     [draft.restrictions, draft.hours, draft.fees].some(

@@ -17,10 +17,45 @@ export function parkingGeoJSON(
         sample: record.sourceKind === 'sample',
         selected: record.id === selectedId,
         muted: selectedId !== null && record.id !== selectedId,
-        label: record.kind === 'garage' ? 'G' : 'P',
+        label: 'P',
+        // Symbol sort keys draw larger values last: southern pins sit on top.
+        sortKey:
+          record.geometry.type === 'Point'
+            ? -(record.geometry.coordinates[1] ?? 0)
+            : 0,
       },
     })),
   }
+}
+
+export function parkingMapSources(
+  records: DiscoveryParking[],
+  selectedId: string | null,
+) {
+  const streets: FeatureCollection<LineString> = {
+    type: 'FeatureCollection',
+    features: [],
+  }
+  const facilities: FeatureCollection<Point> = {
+    type: 'FeatureCollection',
+    features: [],
+  }
+  const selected: FeatureCollection<Point> = {
+    type: 'FeatureCollection',
+    features: [],
+  }
+  // Stable input order also breaks ties between pins at the same latitude.
+  for (const feature of parkingGeoJSON(records, selectedId).features.toSorted(
+    (a, b) => String(a.id).localeCompare(String(b.id)),
+  )) {
+    if (feature.geometry.type === 'LineString') {
+      streets.features.push({ ...feature, geometry: feature.geometry })
+    } else {
+      const source = feature.id === selectedId ? selected : facilities
+      source.features.push({ ...feature, geometry: feature.geometry })
+    }
+  }
+  return { streets, facilities, selected }
 }
 
 export function draftGeoJSON(

@@ -52,13 +52,18 @@ export function useLocalState() {
         if (!ready.current || !active.current) return false
         setBusy(true)
         try {
-          const next = change(current.current)
-          await localStore.write(next)
+          const previous = current.current
+          const next = change(previous)
           current.current = next
-          if (active.current) {
-            setState(next)
-            setError(null)
+          if (active.current) setState(next)
+          try {
+            await localStore.write(next)
+          } catch (error) {
+            current.current = previous
+            if (active.current) setState(previous)
+            throw error
           }
+          if (active.current) setError(null)
           return true
         } catch {
           if (active.current)
@@ -106,6 +111,18 @@ export function useLocalState() {
       update((state) => rememberViewed(state, record)),
     park: (coordinate: Coordinate | null) =>
       update((state) => setParkedSpot(state, coordinate)),
+    restore: (previous: LocalState) => update(() => previous),
+    restoreSaved: (
+      saved: LocalState['favorites'][number],
+      list: 'favorites' | 'recents',
+    ) =>
+      update((state) => ({
+        ...state,
+        [list]: [
+          saved,
+          ...state[list].filter((item) => item.key !== saved.key),
+        ].slice(0, list === 'recents' ? 10 : 50),
+      })),
     remove: (key: string, list: 'favorites' | 'recents') =>
       update((state) => ({
         ...state,

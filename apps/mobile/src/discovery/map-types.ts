@@ -8,6 +8,8 @@ export type ParkingMapProps = {
   records: DiscoveryParking[]
   selectedId: string | null
   route: DrivingRoute | null
+  navigation?:
+    { following: boolean; along: number; onPan: () => void } | undefined
   target: CameraTarget
   cameraPadding: { top: number; bottom: number }
   parkedLocation: Coordinate | null
@@ -15,6 +17,7 @@ export type ParkingMapProps = {
   destination: Coordinate | null
   draftPoints: Coordinate[]
   drawing: boolean
+  onPan?: () => void
   onSelect: (id: string) => void
   onMapPress: (point: Coordinate) => void
   onViewport: (viewport: Viewport) => void

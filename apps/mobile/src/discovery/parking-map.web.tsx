@@ -4,18 +4,46 @@ import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import 'maplibre-gl/dist/maplibre-gl.css'
 
 import { config } from './config'
-import { draftGeoJSON, parkingGeoJSON } from './map-data'
+import { splitRoute } from './drive-math'
+import { draftGeoJSON, parkingMapSources } from './map-data'
 import type { ParkingMapProps } from './map-types'
 import { mapColors } from './palette'
+import { parkingPin } from './parking-pin'
 import { routeBounds } from './routing'
-import type { DrivingRoute } from './routing'
 import { useReducedMotion } from './use-reduced-motion'
+
+function parkingPinImage(selected: boolean): ImageData {
+  const canvas = document.createElement('canvas')
+  canvas.width = parkingPin.width * 2
+  canvas.height = parkingPin.height * 2
+  const context = canvas.getContext('2d')
+  if (!context) throw new Error('Parking marker canvas unavailable')
+  context.scale(2, 2)
+  context.fillStyle = selected ? mapColors.facilitySelected : mapColors.facility
+  context.strokeStyle = selected
+    ? mapColors.facilitySelectedOutline
+    : mapColors.facilityOutline
+  context.lineWidth = 1.5
+  context.lineJoin = 'round'
+  const outline = new Path2D(parkingPin.outline)
+  context.shadowColor = 'rgba(23, 43, 77, 0.3)'
+  context.shadowBlur = 6
+  context.shadowOffsetY = 2
+  context.fill(outline)
+  context.shadowColor = 'transparent'
+  context.stroke(outline)
+  context.fillStyle = selected
+    ? mapColors.facilitySelectedLabel
+    : mapColors.facilityLabel
+  context.fill(new Path2D(parkingPin.letter), 'evenodd')
+  return context.getImageData(0, 0, canvas.width, canvas.height)
+}
 
 export default function ParkingMap(props: ParkingMapProps) {
   const container = useRef<HTMLDivElement>(null)
   const map = useRef<Map | null>(null)
   const previousTarget = useRef(props.target)
-  const previousRoute = useRef<DrivingRoute | null>(null)
+  const focusUntil = useRef(0)
   const [initialCamera] = useState(() => ({
     center: props.target.coordinate,
     zoom: 16,
@@ -24,7 +52,7 @@ export default function ParkingMap(props: ParkingMapProps) {
   const reduced = useReducedMotion()
   const [loaded, setLoaded] = useState(false)
   const parking = useMemo(
-    () => parkingGeoJSON(props.records, props.selectedId),
+    () => parkingMapSources(props.records, props.selectedId),
     [props.records, props.selectedId],
   )
   const draft = useMemo(
@@ -32,6 +60,7 @@ export default function ParkingMap(props: ParkingMapProps) {
     [props.draftPoints],
   )
   const { top, bottom } = props.cameraPadding
+  const status = useEffectEvent(props.onStatus)
   const pressed = useEffectEvent(
     (event: {
       point: { x: number; y: number }
@@ -42,13 +71,48 @@ export default function ParkingMap(props: ParkingMapProps) {
           [event.point.x - 14, event.point.y - 14],
           [event.point.x + 14, event.point.y + 14],
         ],
-        { layers: ['facilities', 'streets'] },
+        {
+          layers: [
+            'selected-facility',
+            'facilities',
+            'cluster-count',
+            'clusters',
+            'streets',
+          ],
+        },
       )
-      const id: unknown = features?.[0]?.properties.id
+      const feature = features?.[0]
+      const clusterId: unknown = feature?.properties.cluster_id
+      if (
+        !props.drawing &&
+        typeof clusterId === 'number' &&
+        feature?.geometry.type === 'Point'
+      ) {
+        const [lng, lat] = feature.geometry.coordinates
+        const source = map.current?.getSource<GeoJSONSource>('facilities')
+        if (lng !== undefined && lat !== undefined) {
+          void source
+            ?.getClusterExpansionZoom(clusterId)
+            .then((zoom) => {
+              map.current?.easeTo({
+                center: [lng, lat],
+                zoom,
+                duration: reduced ? 0 : 450,
+              })
+            })
+            .catch(() => status('error'))
+        }
+        return
+      }
+      const id: unknown = feature?.properties.id
       if (!props.drawing && typeof id === 'string') props.onSelect(id)
       else props.onMapPress([event.lngLat.lng, event.lngLat.lat])
     },
   )
+  const panned = useEffectEvent(() => {
+    props.navigation?.onPan()
+    props.onPan?.()
+  })
   const moved = useEffectEvent(() => {
     const instance = map.current
     const bounds = instance?.getBounds()
@@ -61,7 +125,6 @@ export default function ParkingMap(props: ParkingMapProps) {
         zoom: instance.getZoom(),
       })
   })
-  const status = useEffectEvent(props.onStatus)
 
   useEffect(() => {
     if (!container.current) return
@@ -77,6 +140,7 @@ export default function ParkingMap(props: ParkingMapProps) {
         minZoom: 3,
         maxZoom: 20,
         attributionControl: false,
+        fadeDuration: 0,
       })
     } catch {
       status('error')
@@ -85,6 +149,8 @@ export default function ParkingMap(props: ParkingMapProps) {
     instance.jumpTo(initialCamera)
     map.current = instance
     instance.on('load', () => {
+      instance.addImage('parking-pin', parkingPinImage(false))
+      instance.addImage('parking-pin-selected', parkingPinImage(true))
       instance.addSource('route', {
         type: 'geojson',
         data: { type: 'FeatureCollection', features: [] },
@@ -101,6 +167,17 @@ export default function ParkingMap(props: ParkingMapProps) {
           paint: { 'line-color': color, 'line-width': width },
         })
       }
+      instance.addSource('traveled-route', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      })
+      instance.addLayer({
+        id: 'traveled-route',
+        type: 'line',
+        source: 'traveled-route',
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': '#929A9D', 'line-width': 6 },
+      })
       instance.addSource('parking', {
         type: 'geojson',
         data: { type: 'FeatureCollection', features: [] },
@@ -134,51 +211,78 @@ export default function ParkingMap(props: ParkingMapProps) {
         },
         layout: { 'line-cap': 'round', 'line-join': 'round' },
       })
+      instance.addSource('facilities', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+        cluster: true,
+        clusterRadius: 50,
+        clusterMaxZoom: 15,
+      })
       instance.addLayer({
-        id: 'facilities',
+        id: 'cluster-shadow',
         type: 'circle',
-        source: 'parking',
-        filter: ['==', ['geometry-type'], 'Point'],
+        source: 'facilities',
+        filter: ['has', 'point_count'],
         paint: {
-          'circle-color': [
-            'case',
-            ['get', 'selected'],
-            mapColors.facilitySelected,
-            mapColors.facility,
-          ],
-          'circle-radius': ['case', ['get', 'selected'], 21, 17],
-          'circle-stroke-width': 3,
-          'circle-opacity': ['case', ['get', 'muted'], 0.75, 1],
-          'circle-stroke-opacity': ['case', ['get', 'muted'], 0.75, 1],
-          'circle-stroke-color': [
-            'case',
-            ['get', 'selected'],
-            mapColors.facilitySelectedOutline,
-            mapColors.facilityOutline,
-          ],
+          'circle-radius': ['step', ['get', 'point_count'], 19, 10, 23, 50, 27],
+          'circle-color': '#172B4D',
+          'circle-blur': 0.5,
+          'circle-opacity': 0.25,
+          'circle-translate': [0, 2],
         },
       })
       instance.addLayer({
-        id: 'parking-labels',
-        type: 'symbol',
-        source: 'parking',
-        filter: ['==', ['geometry-type'], 'Point'],
-        layout: {
-          'text-field': ['get', 'label'],
-          'text-font': ['Noto Sans Bold'],
-          'text-size': 15,
-          'text-allow-overlap': true,
-        },
+        id: 'clusters',
+        type: 'circle',
+        source: 'facilities',
+        filter: ['has', 'point_count'],
         paint: {
-          'text-opacity': ['case', ['get', 'muted'], 0.75, 1],
-          'text-color': [
-            'case',
-            ['get', 'selected'],
-            mapColors.facilitySelectedLabel,
-            mapColors.facilityLabel,
-          ],
+          'circle-radius': ['step', ['get', 'point_count'], 16, 10, 20, 50, 24],
+          'circle-color': mapColors.facility,
+          'circle-stroke-color': mapColors.casing,
+          'circle-stroke-width': 1.5,
+          'circle-opacity': 1,
         },
       })
+      instance.addLayer({
+        id: 'cluster-count',
+        type: 'symbol',
+        source: 'facilities',
+        filter: ['has', 'point_count'],
+        layout: {
+          'text-field': ['get', 'point_count_abbreviated'],
+          'text-font': ['Noto Sans Bold'],
+          'text-size': 14,
+          'text-allow-overlap': true,
+          'text-ignore-placement': true,
+        },
+        paint: { 'text-color': mapColors.facilityLabel, 'text-opacity': 1 },
+      })
+      instance.addSource('selected-facility', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      })
+      for (const selected of [false, true]) {
+        instance.addLayer({
+          id: selected ? 'selected-facility' : 'facilities',
+          type: 'symbol',
+          source: selected ? 'selected-facility' : 'facilities',
+          filter: ['!', ['has', 'point_count']],
+          layout: {
+            'icon-image': selected ? 'parking-pin-selected' : 'parking-pin',
+            'icon-size': selected ? 0.6 : 0.5,
+            'icon-anchor': 'bottom',
+            'icon-allow-overlap': true,
+            'icon-ignore-placement': true,
+            'symbol-z-order': 'source',
+            'symbol-sort-key': ['get', 'sortKey'],
+          },
+          paint: {
+            'icon-opacity': 1,
+            'icon-opacity-transition': { duration: 0 },
+          },
+        })
+      }
       for (const [id, color, radius] of [
         ['user', mapColors.user, 7],
         ['destination', mapColors.destination, 8],
@@ -205,8 +309,9 @@ export default function ParkingMap(props: ParkingMapProps) {
         type: 'symbol',
         source: 'parked',
         layout: {
-          'text-field': 'CAR',
-          'text-size': 10,
+          'text-field': 'Your car',
+          'text-size': 12,
+          'text-offset': [0, 1.8],
           'text-allow-overlap': true,
         },
         paint: { 'text-color': mapColors.casing },
@@ -243,6 +348,10 @@ export default function ParkingMap(props: ParkingMapProps) {
     })
     instance.on('click', pressed)
     instance.on('moveend', moved)
+    instance.on('dragstart', panned)
+    instance.on('zoomstart', (event) => {
+      if (event.originalEvent) panned()
+    })
     instance.on('error', () => status('error'))
     instance.on('idle', () => status('ready'))
     return () => {
@@ -253,9 +362,7 @@ export default function ParkingMap(props: ParkingMapProps) {
 
   useEffect(() => {
     if (!loaded) return
-    const routeChanged = previousRoute.current !== props.route
-    previousRoute.current = props.route
-    if (props.route && routeChanged) {
+    if (props.route && !props.navigation) {
       map.current?.fitBounds(routeBounds(props.route), {
         padding: { top: top + 20, bottom: bottom + 20, left: 28, right: 28 },
         duration: reduced ? 0 : 400,
@@ -265,8 +372,12 @@ export default function ParkingMap(props: ParkingMapProps) {
     }
     const focusTarget = previousTarget.current !== props.target
     previousTarget.current = props.target
+    if (focusTarget) focusUntil.current = Date.now() + 1000
     map.current?.easeTo({
-      ...(focusTarget ? { center: props.target.coordinate, zoom: 16 } : {}),
+      ...(focusTarget || props.selectedId || Date.now() < focusUntil.current
+        ? { center: props.target.coordinate }
+        : {}),
+      ...(focusTarget ? { zoom: 16 } : {}),
       duration: reduced ? 0 : 400,
       padding: { top, bottom, left: 0, right: 0 },
     })
@@ -277,21 +388,57 @@ export default function ParkingMap(props: ParkingMapProps) {
     top,
     bottom,
     props.selectedId,
+    props.navigation,
     reduced,
   ])
   useEffect(() => {
     if (!loaded) return
-    const source = map.current?.getSource<GeoJSONSource>('parking')
-    source?.setData(parking)
+    map.current?.getSource<GeoJSONSource>('parking')?.setData(parking.streets)
+    map.current
+      ?.getSource<GeoJSONSource>('facilities')
+      ?.setData(parking.facilities)
+    map.current
+      ?.getSource<GeoJSONSource>('selected-facility')
+      ?.setData(parking.selected)
   }, [loaded, parking])
   useEffect(() => {
     if (!loaded) return
+    const split =
+      props.route && props.navigation
+        ? splitRoute(props.route, props.navigation.along)
+        : null
+    map.current?.getSource<GeoJSONSource>('route')?.setData(
+      split
+        ? { type: 'LineString', coordinates: split.remaining }
+        : (props.route?.geometry ?? {
+            type: 'FeatureCollection',
+            features: [],
+          }),
+    )
     map.current
-      ?.getSource<GeoJSONSource>('route')
+      ?.getSource<GeoJSONSource>('traveled-route')
       ?.setData(
-        props.route?.geometry ?? { type: 'FeatureCollection', features: [] },
+        split && split.traveled.length > 1
+          ? { type: 'LineString', coordinates: split.traveled }
+          : { type: 'FeatureCollection', features: [] },
       )
-  }, [loaded, props.route])
+  }, [loaded, props.route, props.navigation])
+  useEffect(() => {
+    if (!loaded || !props.navigation?.following || !props.userLocation) return
+    map.current?.easeTo({
+      center: props.userLocation,
+      zoom: 17,
+      padding: { top, bottom, left: 0, right: 0 },
+      duration: reduced ? 0 : 650,
+    })
+  }, [
+    loaded,
+    props.userLocation,
+    props.navigation?.following,
+    top,
+    bottom,
+    reduced,
+  ])
   useEffect(() => {
     if (!loaded) return
     map.current?.getSource<GeoJSONSource>('draft')?.setData(draft)

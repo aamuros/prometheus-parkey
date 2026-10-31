@@ -182,10 +182,8 @@ export function ParkingGallery({ photos }: { photos: ParkingPhoto[] }) {
 const styles = StyleSheet.create({
   image: {
     backgroundColor: colors.canvas,
-    borderRadius: 12,
+    borderRadius: 16,
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: colors.border,
   },
   thumbnail: { width: 92, height: 96 },
   full: { width: '100%', aspectRatio: 16 / 9 },

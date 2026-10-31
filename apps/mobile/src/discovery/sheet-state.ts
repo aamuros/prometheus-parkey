@@ -49,16 +49,23 @@ export function sheetHeights(
   headerHeight = 0,
 ) {
   const usable = Math.max(1, height - top)
-  const compact = Math.min(
-    Math.max(120, headerHeight + Math.max(48, 23 * fontScale + 20)) +
-      Math.max(bottom, 12),
-    usable * 0.6,
-  )
+  const compact = selected
+    ? Math.min(
+        162 + Math.max(bottom, 16) + Math.max(0, fontScale - 1) * 46,
+        usable * 0.6,
+      )
+    : Math.min(
+        Math.max(120, headerHeight + Math.max(72, 23 * fontScale + 20)) +
+          Math.max(bottom, 12),
+        usable * 0.6,
+      )
   const expanded = Math.max(compact, usable * 0.8)
   const medium = Math.min(
     expanded,
     Math.max(
-      (selected ? 300 : 240) + bottom + Math.max(0, fontScale - 1) * 80,
+      Math.max(compact + 24, selected ? 300 : 240) +
+        bottom +
+        Math.max(0, fontScale - 1) * 80,
       usable * 0.45,
     ),
   )
@@ -94,5 +101,17 @@ export function snapSheet(
         ? position
         : nearest,
     selected ? 'medium' : 'compact',
+  )
+}
+
+export function stepSheet(
+  position: SheetPosition,
+  direction: 1 | -1,
+): SheetPosition {
+  const positions: SheetPosition[] = ['compact', 'medium', 'expanded']
+  return (
+    positions[
+      Math.max(0, Math.min(2, positions.indexOf(position) + direction))
+    ] ?? 'compact'
   )
 }

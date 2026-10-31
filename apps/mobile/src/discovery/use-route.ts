@@ -28,11 +28,16 @@ export function useRoute() {
     async (
       destination: Coordinate,
       locate: () => Promise<Coordinate | null>,
+      rerouting = false,
     ) => {
       controller.current?.abort()
       const request = new AbortController()
       controller.current = request
-      setState({ status: 'locating', route: null, error: null })
+      setState((current) => ({
+        status: 'locating',
+        route: rerouting ? current.route : null,
+        error: null,
+      }))
       try {
         if (!config.routingUrl)
           throw new Error(
@@ -44,10 +49,29 @@ export function useRoute() {
           throw new Error(
             'Your location is unavailable. Enable location access and try again.',
           )
-        if (Date.now() < nextRequestAt.current)
-          throw new Error('Wait a second before requesting another route.')
+        if (Date.now() < nextRequestAt.current) {
+          await new Promise<void>((resolve) => {
+            const timer = setTimeout(
+              resolve,
+              nextRequestAt.current - Date.now(),
+            )
+            request.signal.addEventListener(
+              'abort',
+              () => {
+                clearTimeout(timer)
+                resolve()
+              },
+              { once: true },
+            )
+          })
+          if (request.signal.aborted) return null
+        }
         nextRequestAt.current = Date.now() + 1100
-        setState({ status: 'loading', route: null, error: null })
+        setState((current) => ({
+          status: 'loading',
+          route: rerouting ? current.route : null,
+          error: null,
+        }))
         const route = await fetchDrivingRoute(
           from,
           destination,
@@ -60,20 +84,23 @@ export function useRoute() {
         )
         if (!request.signal.aborted)
           setState({ status: 'ready', route, error: null })
+        return request.signal.aborted ? null : route
       } catch (error) {
         if (!request.signal.aborted)
-          setState({
+          setState((current) => ({
             status: 'error',
-            route: null,
+            route: rerouting ? current.route : null,
             error:
               error instanceof Error
                 ? error.message
                 : 'Directions could not be loaded. Please try again.',
-          })
+          }))
+        return null
       }
     },
     [],
   )
 
-  return { ...state, load, clear }
+  const cancel = useCallback(() => controller.current?.abort(), [])
+  return { ...state, load, clear, cancel }
 }

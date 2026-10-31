@@ -26,11 +26,11 @@ export const colors = {
 
 export const mapColors = {
   casing: colors.surface,
-  facility: colors.surface,
-  facilityOutline: colors.brand,
-  facilityLabel: colors.brand,
-  facilitySelected: colors.brand,
-  facilitySelectedOutline: colors.brand,
+  facility: colors.brand,
+  facilityOutline: colors.surface,
+  facilityLabel: colors.surface,
+  facilitySelected: colors.brandDeep,
+  facilitySelectedOutline: colors.surface,
   facilitySelectedLabel: colors.surface,
   street: colors.action,
   streetSelected: colors.brand,

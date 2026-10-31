@@ -5,6 +5,9 @@ import { isCoordinate, isObject } from './model.ts'
 
 export type DrivingStep = {
   instruction: string
+  road: string
+  maneuver: string
+  modifier: string
   distance: number
   location: Coordinate
 }
@@ -24,7 +27,7 @@ function nonnegative(value: unknown): value is number {
 function roadName(step: Record<string, unknown>) {
   const name = typeof step.name === 'string' ? step.name.trim() : ''
   const ref = typeof step.ref === 'string' ? step.ref.trim() : ''
-  return (name || ref).slice(0, 180)
+  return name || ref
 }
 
 function instruction(maneuver: Record<string, unknown>, road: string): string {
@@ -149,6 +152,12 @@ export function parseDrivingRoute(value: unknown): DrivingRoute {
       throw invalid()
     return {
       instruction: instruction(step.maneuver, roadName(step)),
+      road: roadName(step),
+      maneuver: step.maneuver.type,
+      modifier:
+        typeof step.maneuver.modifier === 'string'
+          ? step.maneuver.modifier
+          : '',
       distance: step.distance,
       location: step.maneuver.location,
     }
