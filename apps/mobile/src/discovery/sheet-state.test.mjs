@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import {
   initialSheetState,
+  discoveryCameraPadding,
   sheetHeights,
   sheetReducer,
   snapSheet,
@@ -47,6 +48,7 @@ test('selected parking cannot collapse into an empty summary or lose its browsin
   assert.deepEqual(
     sheetReducer(collapsed, { type: 'browse' }),
     initialSheetState,
+    discoveryCameraPadding,
   )
 })
 
@@ -66,7 +68,7 @@ test('snap heights fit safe areas on small screens, portrait, and landscape', ()
     }
   }
   assert.equal(sheetHeights(844, 59, 34, false).compact, 154)
-  const largeText = sheetHeights(568, 20, 0, false, 2)
+  const largeText = sheetHeights(568, 20, 0, false, 2, 156)
   assert.ok(largeText.compact > sheetHeights(568, 20, 0, false).compact)
   assert.ok(largeText.medium <= largeText.expanded)
 })
@@ -79,4 +81,52 @@ test('drag snapping follows distance and swipe direction, retaining selected pre
   assert.equal(snapSheet(heights, heights.medium, -2, false), 'expanded')
   assert.equal(snapSheet(heights, heights.medium, 2, false), 'compact')
   assert.equal(snapSheet(heights, -100, 1, true), 'medium')
+})
+
+test('measured compact header leaves a tappable first-result peek on a 320 by 568 phone, including large fonts', () => {
+  for (const [fontScale, headerHeight, attributionHeight] of [
+    [1, 96, 48],
+    [2, 156, 56],
+  ]) {
+    const heights = sheetHeights(
+      568 - attributionHeight,
+      20,
+      0,
+      false,
+      fontScale,
+      headerHeight,
+    )
+    assert.ok(heights.compact - headerHeight - 12 >= 48)
+    assert.ok(heights.compact < heights.medium)
+    assert.ok(heights.compact <= (568 - attributionHeight - 20) * 0.6)
+    assert.ok(heights.compact + attributionHeight + 168 <= 568 - 64)
+  }
+})
+
+test('camera padding uses the measured top overlay for initial, recentered and resized views', () => {
+  assert.deepEqual(discoveryCameraPadding(844, 132, 200), {
+    top: 132,
+    bottom: 200,
+  })
+  assert.deepEqual(discoveryCameraPadding(568, 146, 248), {
+    top: 146,
+    bottom: 248,
+  })
+  assert.deepEqual(discoveryCameraPadding(568, 200, 500), {
+    top: 200,
+    bottom: 304,
+  })
+  assert.deepEqual(discoveryCameraPadding(568, 28, 440), {
+    top: 28,
+    bottom: 440,
+  })
+})
+
+test('camera padding always retains a viewport on short screens and rejects negative measurements', () => {
+  for (const height of [0, 60, 180, 320, 568]) {
+    const padding = discoveryCameraPadding(height, 400, 1000)
+    assert.ok(padding.top >= 0 && padding.bottom >= 0)
+    assert.ok(padding.top + padding.bottom <= Math.max(0, height - 64))
+  }
+  assert.deepEqual(discoveryCameraPadding(568, -10, -30), { top: 0, bottom: 0 })
 })

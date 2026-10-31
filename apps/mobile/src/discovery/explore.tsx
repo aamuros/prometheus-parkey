@@ -31,10 +31,9 @@ import { ContributionForm } from './contribution-form'
 import { hasDiscoveryBackend } from './config'
 import { readContributions, writeContributions } from './contributions'
 import type { Destination } from './data'
-import { DiscoverySheet } from './discovery-sheet'
+import { DiscoverySheet, MapAttribution } from './discovery-sheet'
 import { partitionParking } from './filters'
 import type { DiscoveryFilter, FeeFilter } from './filters'
-import { hoursLabel, hoursStatus } from './hours'
 import { MapInformation } from './information'
 import { recordKey } from './local-state'
 import { SavedPlaces } from './saved-places'
@@ -42,7 +41,6 @@ import { useLocalState } from './use-local-state'
 import { track } from './telemetry'
 import {
   anchor,
-  distanceLabel,
   inPilotCoverage,
   inViewport,
   isCoordinate,
@@ -56,14 +54,21 @@ import {
 import type { Viewport } from './model'
 import ParkingMap from './parking-map'
 import { ParkingDetails } from './parking-details'
+import { ParkingRow } from './parking-row'
+import { ChipFade } from './chip-fade'
 import {
   developmentSamplesEnabled,
   millisecondsToNextMinute,
+  parkingTitle,
 } from './presentation'
 import { RouteDetails } from './route-details'
 import { sampleParking } from './sample-data'
 import { DestinationSearch } from './search'
-import { initialSheetState, sheetReducer } from './sheet-state'
+import {
+  discoveryCameraPadding,
+  initialSheetState,
+  sheetReducer,
+} from './sheet-state'
 import type { SheetPosition } from './sheet-state'
 import {
   Button,
@@ -102,8 +107,10 @@ export default function Explore() {
   const changeSheetPosition = useCallback((position: SheetPosition) => {
     dispatchSheet({ type: 'snap', position })
   }, [])
-  const [sheetHeight, setSheetHeight] = useState(120 + insets.bottom)
+  const [sheetHeight, setSheetHeight] = useState(168 + insets.bottom)
   const [drawingPanelHeight, setDrawingPanelHeight] = useState(0)
+  const [topOverlayHeight, setTopOverlayHeight] = useState(0)
+  const [chipsAtEnd, setChipsAtEnd] = useState(false)
   const [routeTarget, setRouteTarget] = useState<{
     name: string
     coordinate: Coordinate
@@ -277,7 +284,7 @@ export default function Explore() {
       navigation_provider: 'in_app',
     })
     setRouteTarget({
-      name: record.name,
+      name: parkingTitle(record),
       coordinate: anchor(record.geometry),
       parking: record,
     })
@@ -437,7 +444,7 @@ export default function Explore() {
 
   const discoveryVisible =
     !searchActive && !drawing && !routeTarget && !form && panel === null
-  const controlsVisible = screenHeight - sheetHeight > insets.top + 200
+  const controlsVisible = screenHeight - sheetHeight > topOverlayHeight + 116
   const cameraBottom = routeTarget
     ? routeHeight
     : drawing
@@ -445,21 +452,27 @@ export default function Explore() {
       : discoveryVisible
         ? sheetHeight
         : 0
-  const desiredCameraTop =
-    selected || routeTarget
-      ? insets.top +
-        (sheet.position === 'expanded' && discoveryVisible ? 36 : 102)
-      : 0
-  const cameraTop = Math.min(
-    desiredCameraTop,
-    Math.max(0, screenHeight - cameraBottom - 64),
+  const cameraPadding = discoveryCameraPadding(
+    screenHeight,
+    topOverlayHeight,
+    cameraBottom + (!discoveryVisible ? 48 : 0),
   )
+  function centerOnMyLocation() {
+    void location.locate().then((point) => {
+      if (point) {
+        setSelected(null)
+        setDestination(null)
+        center(point)
+      }
+    })
+  }
   const busy =
     location.status === 'locating' ||
     mapStatus === 'loading' ||
     (!samples && parking.status === 'loading')
-  const resultsSummary =
-    location.status === 'locating'
+  const resultsSummary = locationMessage
+    ? `Location unavailable · ${visible.length} mapped locations`
+    : location.status === 'locating'
       ? 'Finding your location…'
       : mapStatus === 'loading'
         ? 'Loading map…'
@@ -474,64 +487,43 @@ export default function Explore() {
       testID={mapStatus === 'ready' ? 'discovery-map-ready' : 'discovery-map'}
       style={styles.screen}
     >
-      <ParkingMap
-        key={mapRevision}
-        records={visible}
-        selectedId={routeTarget?.parking?.id ?? selected?.id ?? null}
-        route={routeState.route}
-        target={target}
-        cameraPadding={{
-          top: cameraTop,
-          bottom: cameraBottom,
-        }}
-        parkedLocation={local.state.parked?.coordinate ?? null}
-        userLocation={location.point}
-        destination={
-          routeTarget
-            ? routeTarget.coordinate
-            : (destination?.coordinate ?? null)
-        }
-        draftPoints={drawing ? points : EMPTY_POINTS}
-        drawing={drawing}
-        onSelect={select}
-        onMapPress={(point) => {
-          if (drawing && isCoordinate(point))
-            setPoints((current) =>
-              kind === 'street' ? [...current, point].slice(0, 12) : [point],
-            )
-          else setSelected(null)
-        }}
-        onViewport={updateViewport}
-        onStatus={setMapStatus}
-      />
+      {topOverlayHeight > 0 ? (
+        <ParkingMap
+          key={mapRevision}
+          records={visible}
+          selectedId={routeTarget?.parking?.id ?? selected?.id ?? null}
+          route={routeState.route}
+          target={target}
+          cameraPadding={cameraPadding}
+          parkedLocation={local.state.parked?.coordinate ?? null}
+          userLocation={location.point}
+          destination={
+            routeTarget
+              ? routeTarget.coordinate
+              : (destination?.coordinate ?? null)
+          }
+          draftPoints={drawing ? points : EMPTY_POINTS}
+          drawing={drawing}
+          onSelect={select}
+          onMapPress={(point) => {
+            if (drawing && isCoordinate(point))
+              setPoints((current) =>
+                kind === 'street' ? [...current, point].slice(0, 12) : [point],
+              )
+            else setSelected(null)
+          }}
+          onViewport={updateViewport}
+          onStatus={setMapStatus}
+        />
+      ) : null}
 
       <View
         pointerEvents="box-none"
+        onLayout={(event) =>
+          setTopOverlayHeight(event.nativeEvent.layout.height)
+        }
         style={[styles.top, { paddingTop: insets.top + 10 }]}
       >
-        {!selected && sheet.position !== 'expanded' ? (
-          <View
-            style={[
-              ui.row,
-              { justifyContent: 'space-between', paddingHorizontal: 4 },
-            ]}
-          >
-            <View style={styles.wordmark}>
-              <Text style={styles.brand}>parkey</Text>
-              <View style={styles.brandDot} />
-            </View>
-            <IconButton
-              icon="star"
-              label="Open saved places"
-              onPress={() => setPanel('saved')}
-            />
-            <IconButton
-              icon="info"
-              label="Open map information and drafts"
-              onPress={() => setPanel('info')}
-            />
-          </View>
-        ) : null}
         {sheet.position === 'expanded' && discoveryVisible ? null : drawing ? (
           <View style={[styles.drawHeader, ui.shadow]}>
             <View style={ui.flex}>
@@ -569,6 +561,7 @@ export default function Explore() {
               setDestination(found)
               setSelected(null)
               center(found.coordinate)
+              changeSheetPosition('medium')
             }}
           />
         )}
@@ -577,71 +570,71 @@ export default function Explore() {
         !selected &&
         !routeTarget &&
         sheet.position !== 'expanded' ? (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ gap: 7, paddingBottom: 4 }}
-          >
-            <Choice
-              selected={filter === 'all'}
-              onPress={() => {
-                changeFilter('all')
-                setFeeFilter('all')
-              }}
+          <View>
+            <ScrollView
+              horizontal
+              onContentSizeChange={() => setChipsAtEnd(false)}
+              onScroll={({ nativeEvent }) =>
+                setChipsAtEnd(
+                  nativeEvent.contentOffset.x +
+                    nativeEvent.layoutMeasurement.width >=
+                    nativeEvent.contentSize.width - 2,
+                )
+              }
+              scrollEventThrottle={32}
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ gap: 7, paddingBottom: 4 }}
             >
-              All Parking
-            </Choice>
-            <Choice
-              selected={filter === 'street'}
-              onPress={() => changeFilter('street')}
-            >
-              Street Parking
-            </Choice>
-            <Choice
-              selected={filter === 'facilities'}
-              onPress={() => changeFilter('facilities')}
-            >
-              Lots & garages
-            </Choice>
-            <Choice
-              selected={filter === 'lot'}
-              onPress={() => changeFilter('lot')}
-            >
-              Lots
-            </Choice>
-            <Choice
-              selected={filter === 'garage'}
-              onPress={() => changeFilter('garage')}
-            >
-              Garages
-            </Choice>
-            <Choice
-              selected={feeFilter === 'applies'}
-              onPress={() => {
-                setFeeFilter(feeFilter === 'all' ? 'applies' : 'all')
-                track({
-                  name: 'filter_used',
-                  filter: 'fees',
-                  value: feeFilter === 'all' ? 'applies' : 'all',
-                })
-                setSelected(null)
-              }}
-            >
-              Fee applies
-            </Choice>
-          </ScrollView>
-        ) : null}
-        {!searchActive ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Map data sources and attribution"
-            onPress={() => setPanel('info')}
-            style={({ pressed }) => [styles.attribution, pressed && ui.pressed]}
-          >
-            <Text style={styles.attributionText}>
-              © OpenStreetMap · OpenMapTiles · OpenFreeMap
-            </Text>
-          </Pressable>
+              <Choice
+                selected={filter === 'all'}
+                onPress={() => {
+                  changeFilter('all')
+                  setFeeFilter('all')
+                }}
+              >
+                All Parking
+              </Choice>
+              <Choice
+                selected={filter === 'street'}
+                onPress={() => changeFilter('street')}
+              >
+                Street Parking
+              </Choice>
+              <Choice
+                selected={filter === 'facilities'}
+                onPress={() => changeFilter('facilities')}
+              >
+                Lots & garages
+              </Choice>
+              <Choice
+                selected={filter === 'lot'}
+                onPress={() => changeFilter('lot')}
+              >
+                Lots
+              </Choice>
+              <Choice
+                selected={filter === 'garage'}
+                onPress={() => changeFilter('garage')}
+              >
+                Garages
+              </Choice>
+              <Choice
+                selected={feeFilter === 'applies'}
+                onPress={() => {
+                  setFeeFilter(feeFilter === 'all' ? 'applies' : 'all')
+                  track({
+                    name: 'filter_used',
+                    filter: 'fees',
+                    value: feeFilter === 'all' ? 'applies' : 'all',
+                  })
+                  setSelected(null)
+                }}
+              >
+                Fee applies
+              </Choice>
+            </ScrollView>
+            {!chipsAtEnd ? <ChipFade /> : null}
+          </View>
         ) : null}
         {samples ? (
           <View style={styles.warning}>
@@ -655,38 +648,36 @@ export default function Explore() {
       {discoveryVisible && sheet.position !== 'expanded' ? (
         <>
           {controlsVisible ? (
-            <View style={[styles.controls, { bottom: sheetHeight + 16 }]}>
+            <View style={[styles.controls, { bottom: sheetHeight + 8 }]}>
               <IconButton
                 style={ui.shadow}
                 icon="locate"
                 label="Center on my location"
                 disabled={location.status === 'locating'}
-                onPress={() => {
-                  void location.locate().then((point) => {
-                    if (point) {
-                      setSelected(null)
-                      setDestination(null)
-                      center(point)
-                    }
-                  })
-                }}
+                onPress={centerOnMyLocation}
               />
-              <IconButton
-                style={ui.shadow}
-                icon="plus"
-                label="Add missing parking"
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Add missing parking as a local preview"
                 onPress={() => startContribution()}
-              />
+                style={({ pressed }) => [
+                  styles.addParking,
+                  ui.shadow,
+                  pressed && ui.pressed,
+                ]}
+              >
+                <Icon name="plus" color={colors.action} />
+                <Text style={[ui.small, ui.link]}>Add parking</Text>
+              </Pressable>
             </View>
           ) : null}
           {!selected && sheet.position === 'compact' ? (
             <View
               style={[
                 styles.bottom,
-                { bottom: sheetHeight + 12, right: controlsVisible ? 82 : 18 },
+                { bottom: sheetHeight + 8, right: controlsVisible ? 140 : 18 },
               ]}
             >
-              {locationMessage ? <Notice>{locationMessage}</Notice> : null}
               {mapStatus === 'error' ? (
                 <StatusMessage
                   message="The map couldn’t load. Check your connection."
@@ -813,6 +804,12 @@ export default function Explore() {
           busy={busy}
           onPositionChange={changeSheetPosition}
           onHeightChange={setSheetHeight}
+          onSaved={() => setPanel('saved')}
+          onInfo={() => setPanel('info')}
+          onLocate={
+            reference.label === 'map center' ? centerOnMyLocation : null
+          }
+          locating={location.status === 'locating'}
         >
           {selected ? (
             <ParkingDetails
@@ -832,14 +829,35 @@ export default function Explore() {
               onClose={() => setSelected(null)}
               onReport={() => startContribution(selected)}
             />
+          ) : sheet.position === 'compact' ? (
+            <View style={styles.peek}>
+              {ranked[0] ? (
+                <ParkingRow
+                  parking={ranked[0]}
+                  reference={reference}
+                  now={now}
+                  onPress={() => {
+                    const first = ranked[0]
+                    if (first) select(first.id)
+                  }}
+                  compact
+                />
+              ) : (
+                <Text style={ui.small}>
+                  {!parking.canQuery
+                    ? 'Zoom in to load parking records.'
+                    : 'Expand for coverage and filter options.'}
+                </Text>
+              )}
+            </View>
           ) : (
             <FlatList
               data={ranked}
               keyExtractor={(record) => record.id}
               style={ui.flex}
               contentContainerStyle={styles.panelContent}
-              ListHeaderComponent={
-                <View style={{ gap: 12 }}>
+              ListFooterComponent={
+                <View style={{ gap: 12, paddingTop: 12 }}>
                   {feeFilter === 'applies' ? (
                     <Notice>
                       {partitions.matched.length} with recorded fees ·{' '}
@@ -894,63 +912,26 @@ export default function Explore() {
                 </View>
               }
               renderItem={({ item: record }) => (
-                <Pressable
-                  accessibilityRole="button"
-                  testID={
-                    record.id ===
-                    ranked.find((item) => item.kind !== 'street')?.id
-                      ? 'parking-row-facility'
-                      : undefined
-                  }
-                  key={record.id}
-                  onPress={() => select(record.id)}
-                  style={({ pressed }) => [
-                    styles.listRow,
-                    pressed && ui.pressed,
-                  ]}
-                >
-                  <View style={styles.summaryIcon}>
-                    <Icon
-                      name={record.kind === 'street' ? 'street' : 'pin'}
-                      color={colors.brandDeep}
-                    />
-                  </View>
-                  <View style={ui.flex}>
-                    <Text style={ui.heading}>{record.name}</Text>
-                    <Text style={ui.small}>
-                      {kindLabels[record.kind]} ·{' '}
-                      {record.sourceKind === 'sample'
-                        ? 'Sample'
-                        : record.verification === 'verified'
-                          ? 'Verified information'
-                          : 'Unverified'}
+                <View>
+                  {feeFilter === 'applies' &&
+                  record.id === ranked[partitions.matched.length]?.id ? (
+                    <Text style={[ui.small, styles.unknownFees]}>
+                      Fees unknown · shown separately
                     </Text>
-                    <Text style={ui.small}>
-                      {distanceLabel(
-                        reference.coordinate,
-                        anchor(record.geometry),
-                        reference.label,
-                      )}
-                    </Text>
-                    {feeFilter === 'applies' &&
-                    partitions.unknown.includes(record) ? (
-                      <Text style={ui.eyebrow}>
-                        FEES UNKNOWN · SHOWN SEPARATELY
-                      </Text>
-                    ) : null}
-                    <Text style={ui.small}>
-                      {hoursLabel(hoursStatus(record.hours, now))} · based on
-                      recorded hours
-                    </Text>
-                    <Text style={ui.small}>
-                      Source hours: {record.hours?.trim() || 'Not recorded'}
-                    </Text>
-                    <Text style={ui.body} numberOfLines={2}>
-                      {record.fees?.trim() || 'Fees unknown'}
-                    </Text>
-                  </View>
-                  <Icon name="arrow" color={colors.action} size={18} />
-                </Pressable>
+                  ) : null}
+                  <ParkingRow
+                    parking={record}
+                    reference={reference}
+                    now={now}
+                    onPress={() => select(record.id)}
+                    testID={
+                      record.id ===
+                      ranked.find((item) => item.kind !== 'street')?.id
+                        ? 'parking-row-facility'
+                        : undefined
+                    }
+                  />
+                </View>
               )}
               ListEmptyComponent={
                 <View style={{ gap: 12 }}>
@@ -1016,6 +997,16 @@ export default function Explore() {
             />
           )}
         </DiscoverySheet>
+      ) : null}
+      {!discoveryVisible ? (
+        <View
+          style={[
+            styles.fallbackCredits,
+            { bottom: cameraBottom || insets.bottom },
+          ]}
+        >
+          <MapAttribution onPress={() => setPanel('info')} />
+        </View>
       ) : null}
       {panel === 'saved' ? (
         <SavedPlaces
@@ -1124,32 +1115,36 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     paddingHorizontal: 18,
-    gap: 12,
+    gap: 8,
     maxWidth: 620,
     marginHorizontal: 'auto',
   },
-  wordmark: { flexDirection: 'row', alignItems: 'baseline', gap: 3 },
-  brand: {
-    fontSize: 32,
-    fontWeight: '800',
-    letterSpacing: -1.7,
-    color: colors.brand,
-  },
-  brandDot: {
-    height: 7,
-    width: 7,
-    borderRadius: 4,
-    backgroundColor: colors.accent,
-  },
-  attribution: {
-    alignSelf: 'flex-start',
-    paddingVertical: 4,
-    paddingHorizontal: 7,
-    borderRadius: 5,
+  addParking: {
+    minWidth: 96,
+    minHeight: 48,
+    paddingHorizontal: 12,
+    borderRadius: 24,
     backgroundColor: colors.surface,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
   },
-  attributionText: { fontSize: 9, color: colors.muted },
-  controls: { position: 'absolute', right: 18, gap: 10 },
+  peek: { flex: 1, paddingHorizontal: 20, overflow: 'hidden' },
+  unknownFees: { paddingTop: 12, fontWeight: '600' },
+  fallbackCredits: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    maxWidth: 620,
+    marginHorizontal: 'auto',
+  },
+  controls: {
+    position: 'absolute',
+    right: 18,
+    gap: 10,
+    alignItems: 'flex-end',
+  },
   bottom: {
     position: 'absolute',
     left: 18,
@@ -1157,14 +1152,6 @@ const styles = StyleSheet.create({
     gap: 8,
     maxWidth: 584,
     marginHorizontal: 'auto',
-  },
-  summaryIcon: {
-    width: 42,
-    height: 42,
-    backgroundColor: colors.selected,
-    borderRadius: 15,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   status: {
     flexDirection: 'row',
@@ -1208,12 +1195,4 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 16,
   },
   panelContent: { paddingHorizontal: 22, paddingBottom: 22, gap: 16 },
-  listRow: {
-    flexDirection: 'row',
-    gap: 12,
-    alignItems: 'center',
-    paddingVertical: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.line,
-  },
 })

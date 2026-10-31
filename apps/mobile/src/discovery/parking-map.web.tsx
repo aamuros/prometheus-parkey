@@ -5,16 +5,22 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 
 import { config } from './config'
 import { draftGeoJSON, parkingGeoJSON } from './map-data'
-import type { CameraTarget, ParkingMapProps } from './map-types'
-import { PILOT_CENTER } from './model'
+import type { ParkingMapProps } from './map-types'
 import { mapColors } from './palette'
 import { routeBounds } from './routing'
+import type { DrivingRoute } from './routing'
 import { useReducedMotion } from './use-reduced-motion'
 
 export default function ParkingMap(props: ParkingMapProps) {
   const container = useRef<HTMLDivElement>(null)
   const map = useRef<Map | null>(null)
-  const previousTarget = useRef<CameraTarget | null>(null)
+  const previousTarget = useRef(props.target)
+  const previousRoute = useRef<DrivingRoute | null>(null)
+  const [initialCamera] = useState(() => ({
+    center: props.target.coordinate,
+    zoom: 16,
+    padding: { ...props.cameraPadding, left: 0, right: 0 },
+  }))
   const reduced = useReducedMotion()
   const [loaded, setLoaded] = useState(false)
   const parking = useMemo(
@@ -66,8 +72,8 @@ export default function ParkingMap(props: ParkingMapProps) {
       instance = new Map({
         container: container.current,
         style: config.mapStyle,
-        center: PILOT_CENTER,
-        zoom: 15.5,
+        center: initialCamera.center,
+        zoom: initialCamera.zoom,
         minZoom: 3,
         maxZoom: 20,
         attributionControl: false,
@@ -76,6 +82,7 @@ export default function ParkingMap(props: ParkingMapProps) {
       status('error')
       return
     }
+    instance.jumpTo(initialCamera)
     map.current = instance
     instance.on('load', () => {
       instance.addSource('route', {
@@ -242,11 +249,13 @@ export default function ParkingMap(props: ParkingMapProps) {
       instance.remove()
       map.current = null
     }
-  }, [])
+  }, [initialCamera])
 
   useEffect(() => {
     if (!loaded) return
-    if (props.route) {
+    const routeChanged = previousRoute.current !== props.route
+    previousRoute.current = props.route
+    if (props.route && routeChanged) {
       map.current?.fitBounds(routeBounds(props.route), {
         padding: { top: top + 20, bottom: bottom + 20, left: 28, right: 28 },
         duration: reduced ? 0 : 400,
@@ -254,8 +263,7 @@ export default function ParkingMap(props: ParkingMapProps) {
       })
       return
     }
-    const focusTarget =
-      previousTarget.current !== props.target || props.selectedId !== null
+    const focusTarget = previousTarget.current !== props.target
     previousTarget.current = props.target
     map.current?.easeTo({
       ...(focusTarget ? { center: props.target.coordinate, zoom: 16 } : {}),

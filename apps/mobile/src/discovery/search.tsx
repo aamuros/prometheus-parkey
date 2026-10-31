@@ -77,11 +77,15 @@ export function DestinationSearch({
   return (
     <View style={[styles.container, ui.shadow, focused && ui.focused]}>
       <View style={styles.bar}>
-        <Icon name="search" color={colors.brandDeep} size={21} />
+        {!active && !destinationName ? (
+          <Text style={styles.brand}>parkey</Text>
+        ) : (
+          <Icon name="search" color={colors.brandDeep} size={21} />
+        )}
         <TextInput
           testID="destination-query"
           accessibilityLabel="Where do you need parking?"
-          placeholder="Where do you need parking?"
+          placeholder="Search places"
           placeholderTextColor={colors.muted}
           selectionColor={colors.action}
           maxLength={180}
@@ -194,12 +198,18 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   bar: {
-    minHeight: 58,
+    minHeight: 52,
     flexDirection: 'row',
     alignItems: 'center',
     paddingLeft: 18,
     paddingRight: 5,
     gap: 12,
+  },
+  brand: {
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: -0.7,
+    color: colors.brand,
   },
   input: {
     flex: 1,
@@ -219,7 +229,7 @@ const styles = StyleSheet.create({
   },
   searchAction: {
     borderRadius: 12,
-    minHeight: 44,
+    minHeight: 48,
     minWidth: 70,
     alignItems: 'center',
     justifyContent: 'center',

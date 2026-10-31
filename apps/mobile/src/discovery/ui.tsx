@@ -13,7 +13,8 @@ export const detailsPeekHeight = 420
 const paths = {
   star: 'm12 2 3.1 6.3 6.9 1-5 4.9 1.2 6.8-6.2-3.2-6.2 3.2 1.2-6.8-5-4.9 6.9-1L12 2Z',
   search: 'm21 21-5-5M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16',
-  locate: 'm12 2 3 7 7 3-7 3-3 7-3-7-7-3 7-3 3-7Z',
+  locate:
+    'M12 2v3m0 14v3M2 12h3m14 0h3M19 12a7 7 0 1 1-14 0 7 7 0 0 1 14 0ZM14 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0Z',
   plus: 'M12 5v14M5 12h14',
   close: 'm6 6 12 12M6 18 18 6',
   arrow: 'm5 12 14 0m-6-6 6 6-6 6',
@@ -235,7 +236,7 @@ export const ui = StyleSheet.create({
     boxShadow: `inset 0px 0px 0px 1px ${colors.brand}`,
   },
   choice: {
-    minHeight: 44,
+    minHeight: 48,
     paddingVertical: 11,
     paddingHorizontal: 17,
     borderRadius: 14,

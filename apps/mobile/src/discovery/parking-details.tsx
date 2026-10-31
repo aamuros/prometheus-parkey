@@ -21,7 +21,7 @@ import {
 import type { ParkingReference } from './model'
 import { ParkingGallery, ParkingImage } from './parking-photos'
 import { parkingPhotos } from './photos'
-import { displaySourceLabel } from './presentation'
+import { displaySourceLabel, parkingTitle } from './presentation'
 import { track } from './telemetry'
 import { ModalSheet } from './sheets'
 import { Button, colors, Icon, IconButton, Notice, ui } from './ui'
@@ -100,9 +100,6 @@ export function ParkingDetails({
       </Text>
       <Text style={ui.body}>{hoursLabel(hoursStatus(parking.hours, now))}</Text>
       <Text style={ui.small}>Based on recorded hours · Asia/Manila</Text>
-      <Text style={ui.small}>
-        Source hours: {parking.hours?.trim() || 'Not recorded'}
-      </Text>
       <Text
         style={[
           ui.small,
@@ -137,7 +134,7 @@ export function ParkingDetails({
               numberOfLines={2}
               style={ui.heading}
             >
-              {parking.name}
+              {parkingTitle(parking)}
             </Text>
           </View>
           <IconButton
@@ -344,7 +341,7 @@ const styles = StyleSheet.create({
     borderColor: colors.line,
   },
   link: {
-    minHeight: 44,
+    minHeight: 48,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,

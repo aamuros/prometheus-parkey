@@ -10,15 +10,21 @@ import { StyleSheet } from 'react-native'
 
 import { config } from './config'
 import { draftGeoJSON, parkingGeoJSON } from './map-data'
-import type { CameraTarget, ParkingMapProps } from './map-types'
-import { PILOT_CENTER } from './model'
+import type { ParkingMapProps } from './map-types'
 import { mapColors } from './palette'
 import { routeBounds } from './routing'
+import type { DrivingRoute } from './routing'
 import { useReducedMotion } from './use-reduced-motion'
 
 export default function NativeMap(props: ParkingMapProps) {
   const camera = useRef<CameraRef>(null)
-  const previousTarget = useRef<CameraTarget | null>(null)
+  const previousTarget = useRef(props.target)
+  const previousRoute = useRef<DrivingRoute | null>(null)
+  const [initialViewState] = useState(() => ({
+    center: props.target.coordinate,
+    zoom: 16,
+    padding: { ...props.cameraPadding, left: 0, right: 0 },
+  }))
   const reduced = useReducedMotion()
   const [loaded, setLoaded] = useState(false)
   const records = useMemo(
@@ -33,7 +39,9 @@ export default function NativeMap(props: ParkingMapProps) {
   const { top, bottom } = props.cameraPadding
   useEffect(() => {
     if (!loaded) return
-    if (route) {
+    const routeChanged = previousRoute.current !== route
+    previousRoute.current = route
+    if (route && routeChanged) {
       const [[west, south], [east, north]] = routeBounds(route)
       camera.current?.fitBounds([west, south, east, north], {
         duration: reduced ? 0 : 400,
@@ -41,8 +49,7 @@ export default function NativeMap(props: ParkingMapProps) {
       })
       return
     }
-    const focusTarget =
-      previousTarget.current !== target || props.selectedId !== null
+    const focusTarget = previousTarget.current !== target
     previousTarget.current = target
     if (!focusTarget) {
       void camera.current
@@ -86,7 +93,7 @@ export default function NativeMap(props: ParkingMapProps) {
     >
       <Camera
         ref={camera}
-        initialViewState={{ center: PILOT_CENTER, zoom: 15.5 }}
+        initialViewState={initialViewState}
         minZoom={3}
         maxZoom={20}
       />

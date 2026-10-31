@@ -46,9 +46,14 @@ export function sheetHeights(
   bottom: number,
   selected: boolean,
   fontScale = 1,
+  headerHeight = 0,
 ) {
   const usable = Math.max(1, height - top)
-  const compact = Math.min(Math.max(120, 70 + 41 * fontScale) + bottom, usable)
+  const compact = Math.min(
+    Math.max(120, headerHeight + Math.max(48, 23 * fontScale + 20)) +
+      Math.max(bottom, 12),
+    usable * 0.6,
+  )
   const expanded = Math.max(compact, usable * 0.8)
   const medium = Math.min(
     expanded,
@@ -58,6 +63,18 @@ export function sheetHeights(
     ),
   )
   return { compact, medium, expanded }
+}
+
+/** Reserve the measured overlays while keeping a usable viewport on short screens. */
+export function discoveryCameraPadding(
+  height: number,
+  overlayHeight: number,
+  panelHeight: number,
+) {
+  const available = Math.max(0, height - 64)
+  const top = Math.min(Math.max(0, overlayHeight), available)
+  const bottom = Math.min(Math.max(0, panelHeight), available - top)
+  return { top, bottom }
 }
 
 export function snapSheet(

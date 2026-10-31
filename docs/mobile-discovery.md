@@ -34,12 +34,25 @@ conservatively parsed source schedule in Asia/Manila. Raw source hours remain
 visible. These labels describe the recorded schedule, not verified operation. Street distances still use a mapped midpoint
 approximation, not a known entrance or walking route.
 
-The browsing summary starts around 120 pt plus the bottom safe area; results use
-roughly 45% or 80% of usable height. Selected previews have a minimum content
+Browsing starts compact: a one-line summary shares the handle row with Saved
+places and Map information, followed by a straight-line distance note and a
+tappable first-result peek. Selecting a destination opens medium results;
+selecting parking opens the medium preview. The idle search bar carries a small
+Parkey wordmark, and the filter row has a trailing fade to indicate scrolling.
+When distances reference map center, the header offers one user-initiated
+**Use my location** action. Expanded results put rows first, with the longer
+coverage, safety and status notes below them.
+
+Compact height follows the measured header, text scale and first-result target;
+results use roughly 45% or 80% of usable height. Selected previews have a minimum content
 height where screen size permits. Snap heights adapt to orientation, safe areas,
 and font scaling. Only the handle captures vertical sheet drags; lists, details,
-and the horizontal gallery retain their scrolling gestures. The map padding
-updates at snap positions without resetting a manually panned browsing view.
+and the horizontal gallery retain their scrolling gestures. Map data attribution is docked to the sheet's top edge in a measured, wrapping
+48 pt minimum touch target; it remains visible when the sheet expands, with a
+fallback while another map flow replaces the sheet. Both renderers use measured
+top-overlay and sheet heights for initial positioning, explicit recentering and
+padding changes. Padding updates preserve a manually panned view, including
+when parking is selected.
 At the expanded position, search and filter controls give way to the map peek
 and return on collapse; attribution stays visible. Camera padding is bounded to
 retain a map viewport on short screens, and floating controls hide when they do
@@ -113,8 +126,12 @@ Implementation lives in `apps/mobile/src/discovery`:
 - `explore.tsx`: map workspace, filters, selections, map drawing, and local flow.
 - `native-map.tsx` / `parking-map.web.tsx`: MapLibre native / GL JS renderers.
 - `search.tsx`: explicit-submit destination search, cancellation, loading/error/empty states.
-- `discovery-sheet.tsx` / `sheet-state.ts`: animated discovery panel, snap geometry,
-  and browsing/selection transitions.
+- `discovery-sheet.tsx` / `sheet-state.ts`: animated discovery panel, attribution,
+  snap geometry, bounded camera padding, and browsing/selection transitions.
+- `parking-row.tsx` / `presentation.ts`: type-based unnamed display titles and
+  two metadata lines (distance/reference with verification, then recorded facts).
+  Missing hours and fees share one muted label; provenance stays in full details.
+- `chip-fade.tsx`: palette-based SVG fade for the horizontally scrollable filters.
 - `parking-details.tsx`: parking preview, expanded details, and directions chooser.
 - `photos.ts` / `parking-photos.tsx`: curated photo matching, validation, gallery,
   image loading and fallback states. `sheets.tsx` retains the shared modal shell.
@@ -337,7 +354,7 @@ amenity, numeric price, or hours filter is offered by this dataset.
 
 ### Saved places on this device
 
-The star beside the map wordmark opens saved places. Save where I parked explicitly
+The star beside the discovery sheet handle opens saved places. Save where I parked explicitly
 requests the current location; it never silently saves the map center or a previous
 GPS fix. A navy CAR marker distinguishes the saved point. Show it on the map,
 request a driving route back (not walking navigation), replace it, or clear it.
