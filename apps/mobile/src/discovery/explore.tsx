@@ -14,6 +14,7 @@ import {
 } from 'react'
 import {
   ActivityIndicator,
+  AppState,
   BackHandler,
   FlatList,
   Platform,
@@ -31,11 +32,13 @@ import { hasDiscoveryBackend } from './config'
 import { readContributions, writeContributions } from './contributions'
 import type { Destination } from './data'
 import { DiscoverySheet } from './discovery-sheet'
+import { partitionParking } from './filters'
+import type { DiscoveryFilter, FeeFilter } from './filters'
+import { hoursLabel, hoursStatus } from './hours'
 import { MapInformation } from './information'
 import {
   anchor,
   distanceLabel,
-  filterParking,
   inPilotCoverage,
   inViewport,
   isCoordinate,
@@ -46,7 +49,7 @@ import {
   rankParking,
   validateContribution,
 } from './model'
-import type { ParkingFilter, Viewport } from './model'
+import type { Viewport } from './model'
 import ParkingMap from './parking-map'
 import { ParkingDetails } from './parking-details'
 import { RouteDetails } from './route-details'
@@ -78,7 +81,9 @@ export default function Explore() {
     coordinate: PILOT_CENTER,
     revision: 0,
   })
-  const [filter, setFilter] = useState<ParkingFilter>('all')
+  const [filter, setFilter] = useState<DiscoveryFilter>('all')
+  const [feeFilter, setFeeFilter] = useState<FeeFilter>('all')
+  const [now, setNow] = useState(() => new Date())
   const [sheet, dispatchSheet] = useReducer(sheetReducer, initialSheetState)
   const selected = sheet.parking
   const setSelected = useCallback((record: DiscoveryParking | null) => {
@@ -124,9 +129,13 @@ export default function Explore() {
         : parking.records,
     [samples, viewport, parking.records],
   )
+  const partitions = useMemo(
+    () => partitionParking(records, filter, feeFilter),
+    [records, filter, feeFilter],
+  )
   const visible = useMemo(
-    () => filterParking(records, filter),
-    [records, filter],
+    () => [...partitions.matched, ...partitions.unknown],
+    [partitions],
   )
   const reference = useMemo(
     () =>
@@ -138,8 +147,11 @@ export default function Explore() {
     [destination, location.point, viewport],
   )
   const ranked = useMemo(
-    () => rankParking(visible, reference.coordinate),
-    [visible, reference],
+    () => [
+      ...rankParking(partitions.matched, reference.coordinate),
+      ...rankParking(partitions.unknown, reference.coordinate),
+    ],
+    [partitions, reference],
   )
   const outsidePilot =
     !samples && !hasDiscoveryBackend && !inPilotCoverage(viewport)
@@ -149,6 +161,18 @@ export default function Explore() {
     : 'Parking in this area'
   const parkingError =
     'Parking refresh failed. Previously loaded records may be shown; the OSM snapshot is offline data.'
+
+  useEffect(() => {
+    const refresh = () => setNow(new Date())
+    const timer = setInterval(refresh, 15000)
+    const listener = AppState.addEventListener('change', (state) => {
+      if (state === 'active') refresh()
+    })
+    return () => {
+      clearInterval(timer)
+      listener.remove()
+    }
+  }, [])
 
   useEffect(() => {
     let active = true
@@ -239,7 +263,7 @@ export default function Explore() {
     setPanel(null)
     center(anchor(record.geometry))
   }
-  function changeFilter(next: ParkingFilter) {
+  function changeFilter(next: DiscoveryFilter) {
     clearRoute()
     setRouteParking(null)
     setFilter(next)
@@ -485,7 +509,10 @@ export default function Explore() {
           >
             <Choice
               selected={filter === 'all'}
-              onPress={() => changeFilter('all')}
+              onPress={() => {
+                changeFilter('all')
+                setFeeFilter('all')
+              }}
             >
               All Parking
             </Choice>
@@ -500,6 +527,27 @@ export default function Explore() {
               onPress={() => changeFilter('facilities')}
             >
               Lots & garages
+            </Choice>
+            <Choice
+              selected={filter === 'lot'}
+              onPress={() => changeFilter('lot')}
+            >
+              Lots
+            </Choice>
+            <Choice
+              selected={filter === 'garage'}
+              onPress={() => changeFilter('garage')}
+            >
+              Garages
+            </Choice>
+            <Choice
+              selected={feeFilter === 'applies'}
+              onPress={() => {
+                setFeeFilter(feeFilter === 'all' ? 'applies' : 'all')
+                setSelected(null)
+              }}
+            >
+              Fee applies
             </Choice>
           </ScrollView>
         ) : null}
@@ -687,6 +735,7 @@ export default function Explore() {
               key={selected.id}
               parking={selected}
               reference={reference}
+              now={now}
               expanded={sheet.position === 'expanded'}
               onExpand={() => changeSheetPosition('expanded')}
               onDirections={() => startDirections(selected)}
@@ -701,6 +750,13 @@ export default function Explore() {
               contentContainerStyle={styles.panelContent}
               ListHeaderComponent={
                 <View style={{ gap: 12 }}>
+                  {feeFilter === 'applies' ? (
+                    <Notice>
+                      {partitions.matched.length} with recorded fees ·{' '}
+                      {partitions.unknown.length} with fees unknown, listed
+                      separately below. Unknown fees do not mean free parking.
+                    </Notice>
+                  ) : null}
                   {locationMessage ? <Notice>{locationMessage}</Notice> : null}
                   {mapStatus === 'error' ? (
                     <StatusMessage
@@ -780,6 +836,19 @@ export default function Explore() {
                         reference.label,
                       )}
                     </Text>
+                    {feeFilter === 'applies' &&
+                    partitions.unknown.includes(record) ? (
+                      <Text style={ui.eyebrow}>
+                        FEES UNKNOWN · NOT A FILTER MATCH
+                      </Text>
+                    ) : null}
+                    <Text style={ui.small}>
+                      {hoursLabel(hoursStatus(record.hours, now))} · based on
+                      recorded hours
+                    </Text>
+                    <Text style={ui.small}>
+                      Source hours: {record.hours?.trim() || 'Not recorded'}
+                    </Text>
                     <Text style={ui.body} numberOfLines={2}>
                       {record.fees?.trim() || 'Fees unknown'}
                     </Text>
@@ -821,7 +890,12 @@ export default function Explore() {
                     </Button>
                   ) : null}
                   {filteredOut ? (
-                    <Button onPress={() => changeFilter('all')}>
+                    <Button
+                      onPress={() => {
+                        changeFilter('all')
+                        setFeeFilter('all')
+                      }}
+                    >
                       Clear filters
                     </Button>
                   ) : null}
@@ -830,6 +904,7 @@ export default function Explore() {
                       onPress={() => {
                         setDestination(null)
                         changeFilter('all')
+                        setFeeFilter('all')
                         center(PILOT_CENTER)
                         changeSheetPosition('compact')
                       }}

@@ -29,8 +29,9 @@ The selected preview shows a photograph or an honest **No photos yet** fallback,
 name, type, distance, fees, and source verification. Tap the thumbnail or **Photos
 & full details**, or expand the handle, to reveal the horizontal gallery, recorded
 hours, restrictions, address, provenance, photo credits, and correction tools.
-Directions remain outside the scrolling content. Hours are source text, not a
-computed open/closed state. Street distances still use a mapped midpoint
+Directions remain outside the scrolling content. Rows and previews show Open now, Closed, or Hours unknown based only on a
+conservatively parsed source schedule in Asia/Manila. Raw source hours remain
+visible. These labels describe the recorded schedule, not verified operation. Street distances still use a mapped midpoint
 approximation, not a known entrance or walking route.
 
 The browsing summary starts around 120 pt plus the bottom safe area; results use
@@ -229,8 +230,10 @@ The bundled JSON contains **41 real OSM records, including 6 street segments**,
 from the WGS84 box `[121.024, 14.558, 121.041, 14.572]` around Poblacion and nearby
 Makati streets. Its source snapshot date is recorded on every record. These are
 not field-verified records. OSM geometry and tags may be outdated or incomplete.
-Hours are retained as source text, including OSM syntax, not interpreted as a
-current-open indicator. Facility centroids are not guaranteed entrances.
+All 41 bundled records currently have unknown hours. The hours parser is tested
+with those real missing values and clearly synthetic normal, overnight, 24/7, and
+malformed schedules; no source values are fabricated. Unsupported syntax stays
+unknown. Daily/weekly schedules refresh while the app is active and on resume. Facility centroids are not guaranteed entrances.
 
 The snapshot was extracted from a one-time OSM API map export after public
 Overpass services were unavailable. **No runtime map interaction queries Overpass
@@ -321,3 +324,11 @@ routing. They do not verify the new directions flow on a device or in a browser.
   (`expo` 58.0.20 and `expo-router` 58.0.27). Installed 58.0.19/58.0.26 were retained;
   newly added native packages use SDK 58's prescribed versions. No framework
   upgrade was made as part of this redesign.
+
+### Discovery filters
+
+Type filters include street, lots and garages together, lots, and garages. Fee
+applies matches only an explicit supported source assertion; it does not estimate
+a price. When active, unknown fees appear separately after matches, with an
+explicit count and label. Missing fees never imply free parking. No vacancy,
+amenity, numeric price, or hours filter is offered by this dataset.

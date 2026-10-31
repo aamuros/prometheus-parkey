@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native'
 
+import { hoursLabel, hoursStatus } from './hours'
 import {
   anchor,
   dateLabel,
@@ -35,6 +36,7 @@ function Detail({ label, value }: { label: string; value: string | null }) {
 export function ParkingDetails({
   parking,
   reference,
+  now,
   expanded,
   onExpand,
   onDirections,
@@ -43,6 +45,7 @@ export function ParkingDetails({
 }: {
   parking: DiscoveryParking
   reference: ParkingReference
+  now: Date
   expanded: boolean
   onExpand: () => void
   onDirections: () => void
@@ -79,6 +82,11 @@ export function ParkingDetails({
       </Text>
       <Text style={ui.body} numberOfLines={expanded ? undefined : 2}>
         Fees: {parking.fees?.trim() || 'Fees unknown'}
+      </Text>
+      <Text style={ui.body}>{hoursLabel(hoursStatus(parking.hours, now))}</Text>
+      <Text style={ui.small}>Based on recorded hours · Asia/Manila</Text>
+      <Text style={ui.small}>
+        Source hours: {parking.hours?.trim() || 'Not recorded'}
       </Text>
       <Text
         style={[
@@ -159,7 +167,7 @@ export function ParkingDetails({
               Check posted signs. No space availability or permission to park is
               guaranteed.
             </Notice>
-            <Detail label="Recorded hours · local time" value={parking.hours} />
+            <Detail label="Source hours · Asia/Manila" value={parking.hours} />
             <Detail label="Address" value={parking.address} />
             {parking.kind === 'street' ? (
               <Detail
