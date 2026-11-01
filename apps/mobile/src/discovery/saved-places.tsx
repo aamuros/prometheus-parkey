@@ -199,18 +199,7 @@ export function SavedPlaces({
             <Button
               secondary
               disabled={local.busy}
-              onPress={() => {
-                const previous = local.state
-                void local.clear().then(() =>
-                  setToast({
-                    message: 'Saved data cleared',
-                    undo: () => {
-                      void local.restore(previous)
-                      setToast(null)
-                    },
-                  }),
-                )
-              }}
+              onPress={() => void local.clear()}
             >
               Clear saved data on this device
             </Button>

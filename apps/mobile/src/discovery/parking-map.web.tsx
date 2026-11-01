@@ -66,6 +66,10 @@ export default function ParkingMap(props: ParkingMapProps) {
       point: { x: number; y: number }
       lngLat: { lng: number; lat: number }
     }) => {
+      if (props.searching) {
+        props.onMapPress([event.lngLat.lng, event.lngLat.lat])
+        return
+      }
       const features = map.current?.queryRenderedFeatures(
         [
           [event.point.x - 14, event.point.y - 14],

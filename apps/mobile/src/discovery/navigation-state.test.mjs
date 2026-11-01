@@ -110,3 +110,20 @@ test('a shared full-height selected link has one-level Back entries', () => {
   )
   assert.ok(layers.every((layer) => layer.query === 'Makati'))
 })
+
+test('refresh keeps the chosen search location distinct from the map focus on nearby parking', () => {
+  const state = {
+    ...navigationDefaults,
+    query: 'Makati',
+    searchPoint: [121.0211226, 14.5567949],
+    center: [121.0253195, 14.5591531],
+  }
+  const restored = parseNavigation(navigationSearch(state))
+  assert.deepEqual(restored.searchPoint, state.searchPoint)
+  assert.deepEqual(restored.center, state.center)
+  assert.equal(restored.query, state.query)
+  assert.equal(
+    parseNavigation('?q=Makati&searchLng=999&searchLat=999').searchPoint,
+    null,
+  )
+})

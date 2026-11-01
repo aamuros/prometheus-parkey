@@ -10,6 +10,7 @@ export type NavigationState = {
   fees: FeeFilter
   position: SheetPosition
   query: string
+  searchPoint: Coordinate | null
   searching: boolean
   panel: 'saved' | 'info' | 'add' | null
   route: boolean
@@ -22,6 +23,7 @@ export const navigationDefaults: NavigationState = {
   fees: 'all',
   position: 'compact',
   query: '',
+  searchPoint: null,
   searching: false,
   panel: null,
   route: false,
@@ -65,6 +67,14 @@ export function parseNavigation(
     state.fees = params.get('fees') === 'applies' ? 'applies' : 'all'
   state.selectedId = params.get('spot')?.slice(0, 200) || null
   state.query = (params.get('q') ?? '').slice(0, 180)
+  state.searchPoint = null
+  if (state.query && params.has('searchLng') && params.has('searchLat')) {
+    const point = [
+      Number(params.get('searchLng')),
+      Number(params.get('searchLat')),
+    ]
+    if (isCoordinate(point)) state.searchPoint = point
+  }
   state.searching = params.get('search') === '1'
   const panel = params.get('panel')
   state.panel =
@@ -85,6 +95,10 @@ export function navigationSearch(state: NavigationState): string {
   if (state.fees === 'applies') params.set('fees', state.fees)
   if (state.selectedId) params.set('spot', state.selectedId)
   if (state.query) params.set('q', state.query)
+  if (state.query && state.searchPoint) {
+    params.set('searchLng', String(state.searchPoint[0]))
+    params.set('searchLat', String(state.searchPoint[1]))
+  }
   if (state.searching) params.set('search', '1')
   if (state.panel) params.set('panel', state.panel)
   if (state.route) params.set('route', '1')

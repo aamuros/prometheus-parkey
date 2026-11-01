@@ -4,14 +4,7 @@ import type {
   ParkingContribution,
   ParkingKind,
 } from '@parkey/shared-types'
-import {
-  useCallback,
-  useEffect,
-  useEffectEvent,
-  useMemo,
-  useRef,
-  useState,
-} from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AppState,
   BackHandler,
@@ -56,6 +49,7 @@ import {
 } from './model'
 import type { Viewport } from './model'
 import ParkingMap from './parking-map'
+import type { CameraTarget } from './map-types'
 import { ParkingDetails } from './parking-details'
 import { PARKING_ROW_HEIGHT, ParkingRow } from './parking-row'
 import {
@@ -82,6 +76,8 @@ import {
   UndoToast,
   ui,
 } from './ui'
+import { useGrantedLocation } from './use-granted-location'
+import { useDirectDirections } from './use-direct-directions'
 import { useLocation } from './use-location'
 import { useParking } from './use-parking'
 import { useRoute } from './use-route'
@@ -92,7 +88,7 @@ export default function Explore() {
   const insets = useSafeAreaInsets()
   const { height: screenHeight } = useWindowDimensions()
   const [viewport, setViewport] = useState(PILOT_VIEWPORT)
-  const navigation = useNavigation()
+  const navigation = useNavigation(routeExited)
   const { update: updateNavigation, close: closeNavigation } = navigation
   const nav = navigation.state
   const panned = useRef(false)
@@ -101,9 +97,11 @@ export default function Explore() {
   useEffect(() => {
     searchedCenter.current = nav.center
   }, [nav.center])
-  const target = useMemo(
-    () => ({ coordinate: nav.center, revision: 0 }),
-    [nav.center],
+  const [longitude, latitude] = nav.center
+  const cameraRevision = navigation.cameraRevision
+  const target = useMemo<CameraTarget>(
+    () => ({ coordinate: [longitude, latitude], revision: cameraRevision }),
+    [longitude, latitude, cameraRevision],
   )
   const filter = nav.filter
   const feeFilter = nav.fees
@@ -150,7 +148,15 @@ export default function Explore() {
     parking: DiscoveryParking | null
   } | null>(null)
   const [routeHeight, setRouteHeight] = useState(detailsPeekHeight)
-  const [destination, setDestination] = useState<Destination | null>(null)
+  const destination = useMemo<Pick<Destination, 'name' | 'coordinate'> | null>(
+    () =>
+      nav.searchPoint && nav.query
+        ? { name: nav.query, coordinate: nav.searchPoint }
+        : null,
+    [nav.searchPoint, nav.query],
+  )
+  const clearDestination = () =>
+    updateNavigation({ searchPoint: null, query: '' }, 'replace')
   const searchActive = nav.searching
   const panel = nav.panel
   const setPanel = (value: 'info' | 'saved' | null) =>
@@ -181,6 +187,8 @@ export default function Explore() {
   const saving = useRef(false)
   const savingFavorite = useRef(false)
   const location = useLocation()
+  useGrantedLocation(location.locate)
+  const currentLocation = location.status === 'idle' ? location.point : null
   const local = useLocalState()
   const [saveLocationError, setSaveLocationError] = useState<string | null>(
     null,
@@ -207,22 +215,10 @@ export default function Explore() {
     reroute,
     cancel: cancelRoute,
   })
-  const directDirections = useRef(false)
-  const startDirectDirections = useEffectEvent(() => {
-    if (
-      directDirections.current &&
-      nav.route &&
-      routeState.status === 'ready' &&
-      routeState.route &&
-      location.point
-    ) {
-      directDirections.current = false
-      drive.start()
-    }
-  })
-  useEffect(() => {
-    startDirectDirections()
-  }, [nav.route, routeState.status, routeState.route, location.point])
+  const directNavigation = useDirectDirections(
+    nav.route && routeState.status === 'ready' && routeState.route !== null,
+    drive.start,
+  )
   const navigating = nav.route && drive.phase === 'navigating'
   const mapNavigation = useMemo(
     () =>
@@ -235,24 +231,16 @@ export default function Explore() {
         : undefined,
     [navigating, drive.following, drive.progress?.along, drive.pan],
   )
-  function endNavigation() {
-    directDirections.current = false
+  function routeExited() {
+    directNavigation.cancel()
     setResumeTarget(routeTarget)
     drive.stop(drive.phase === 'navigating')
     clearRoute()
+  }
+  function endNavigation() {
+    routeExited()
     updateNavigation({ route: false, selectedId: null }, 'replace')
   }
-  const browserBack = useEffectEvent((event: PopStateEvent) => {
-    // Consume Back as End before Expo Router can remount the screen and discard
-    // the five-second Resume action. The history entry itself has already moved.
-    event.stopImmediatePropagation()
-    endNavigation()
-  })
-  useEffect(() => {
-    if (Platform.OS !== 'web' || !nav.route) return
-    window.addEventListener('popstate', browserBack, true)
-    return () => window.removeEventListener('popstate', browserBack, true)
-  }, [nav.route])
   const parking = useParking(viewport, revision)
   const previews = useMemo(
     () => drafts.filter((draft) => draft.intent === 'add').map(draftParking),
@@ -314,15 +302,23 @@ export default function Explore() {
     () =>
       parkingReference(
         destination?.coordinate ?? null,
-        location.point,
+        currentLocation,
         viewport,
       ),
-    [destination, location.point, viewport],
+    [destination, currentLocation, viewport],
   )
   const ranked = useMemo(
     () => rankParking(visible, reference.coordinate),
     [visible, reference.coordinate],
   )
+  const farFromCenter =
+    distanceMeters(
+      [
+        (viewport.west + viewport.east) / 2,
+        (viewport.south + viewport.north) / 2,
+      ],
+      nav.center,
+    ) > 600
   const filteredOut = parking.canQuery && records.length > 0 && !visible.length
   const resultsTitle = destination
     ? `Parking near ${destination.name}`
@@ -373,7 +369,11 @@ export default function Explore() {
     Keyboard.dismiss()
     if (nav.consent) closeNavigation({ consent: false })
     else if (nav.searching)
-      closeNavigation({ searching: false, query: nav.query })
+      closeNavigation({
+        searching: false,
+        query: nav.query,
+        searchPoint: nav.searchPoint,
+      })
     else if (nav.panel) {
       setDrawing(false)
       closeNavigation({ panel: null })
@@ -409,32 +409,34 @@ export default function Explore() {
     )
     return () => cancelAnimationFrame(frame)
   }, [nav.selectedId, ranked])
-  const updateViewport = useCallback((next: Viewport) => {
-    if (panned.current) {
-      const point: Coordinate = [
-        (next.west + next.east) / 2,
-        (next.south + next.north) / 2,
-      ]
-      setAreaRefresh(distanceMeters(point, searchedCenter.current) > 600)
-      panned.current = false
-    }
-    setViewport((current) =>
-      current.west === next.west &&
-      current.south === next.south &&
-      current.east === next.east &&
-      current.north === next.north &&
-      current.zoom === next.zoom
-        ? current
-        : next,
-    )
-  }, [])
+  const updateViewport = useCallback(
+    (next: Viewport) => {
+      if (panned.current) {
+        const point: Coordinate = [
+          (next.west + next.east) / 2,
+          (next.south + next.north) / 2,
+        ]
+        setAreaRefresh(distanceMeters(point, searchedCenter.current) > 600)
+        panned.current = false
+      }
+      setViewport((current) =>
+        current.west === next.west &&
+        current.south === next.south &&
+        current.east === next.east &&
+        current.north === next.north &&
+        current.zoom === next.zoom
+          ? current
+          : next,
+      )
+    },
+    [setAreaRefresh],
+  )
 
   function center(coordinate: Coordinate) {
     updateNavigation({ center: coordinate }, 'replace')
   }
   function startDirections(record: DiscoveryParking) {
     if (record.sourceKind === 'sample') return
-    directDirections.current = true
     void consent.request((confirmed) => beginDirections(record, confirmed))
   }
   function beginDirections(record: DiscoveryParking, confirmed: boolean) {
@@ -461,11 +463,12 @@ export default function Explore() {
     )
     setRejected(new Set())
     setNavigationMessage(null)
-    setFromMapCenter(!location.point)
-    void loadRoute(
-      anchor(record.geometry),
-      async () => location.point ?? target.coordinate,
-    )
+    void loadRoute(anchor(record.geometry), async () => {
+      const origin = await location.locate()
+      setFromMapCenter(!origin)
+      directNavigation.request(origin !== null)
+      return origin ?? target.coordinate
+    })
   }
   function viewed(record: DiscoveryParking) {
     void local.viewed(record)
@@ -508,7 +511,11 @@ export default function Explore() {
   function select(id: string) {
     setAreaRefresh(false)
     if (searchActive) {
-      navigation.close({ searching: false, query: nav.query })
+      navigation.close({
+        searching: false,
+        query: nav.query,
+        searchPoint: nav.searchPoint,
+      })
       return
     }
     const record = visible.find((item) => item.id === id)
@@ -708,7 +715,7 @@ export default function Explore() {
   function centerOnMyLocation() {
     void location.locate().then((point) => {
       if (point) {
-        setDestination(null)
+        clearDestination()
         navigation.update(
           {
             selectedId: null,
@@ -743,7 +750,7 @@ export default function Explore() {
           parkedLocation={local.state.parked?.coordinate ?? null}
           navigation={mapNavigation}
           userLocation={
-            nav.route ? (drive.position ?? location.point) : location.point
+            nav.route ? (drive.position ?? currentLocation) : currentLocation
           }
           destination={
             routeTarget && nav.route
@@ -752,13 +759,18 @@ export default function Explore() {
           }
           draftPoints={drawing ? points : EMPTY_POINTS}
           drawing={drawing}
+          searching={searchActive}
           onSelect={(id) => {
             if (!nav.route) select(id)
           }}
           onMapPress={(point) => {
             if (nav.route) return
             if (searchActive) {
-              closeNavigation({ searching: false, query: nav.query })
+              closeNavigation({
+                searching: false,
+                query: nav.query,
+                searchPoint: nav.searchPoint,
+              })
               Keyboard.dismiss()
               return
             }
@@ -821,17 +833,20 @@ export default function Explore() {
               onSaved={() => setPanel('saved')}
               query={nav.query}
               active={searchActive}
-              onQuery={(query) => updateNavigation({ query }, 'replace')}
+              onQuery={(query) =>
+                updateNavigation({ query, searchPoint: null }, 'replace')
+              }
               onLocate={() => {
                 updateNavigation({
                   searching: false,
                   query: '',
+                  searchPoint: null,
                   selectedId: null,
                   position: 'medium',
                 })
                 void location.locate().then((point) => {
                   if (point) {
-                    setDestination(null)
+                    clearDestination()
                     updateNavigation({ center: point })
                   }
                 })
@@ -839,10 +854,14 @@ export default function Explore() {
               center={target.coordinate}
               onActive={(active) => {
                 if (active) updateNavigation({ searching: true })
-                else closeNavigation({ searching: false, query: nav.query })
+                else
+                  closeNavigation({
+                    searching: false,
+                    query: nav.query,
+                    searchPoint: nav.searchPoint,
+                  })
               }}
               onSelect={(found) => {
-                setDestination(found)
                 const matches = partitionParking(
                   [...parking.knownRecords, ...previews],
                   filter,
@@ -858,6 +877,7 @@ export default function Explore() {
                 updateNavigation({
                   searching: false,
                   query: found.name,
+                  searchPoint: found.coordinate,
                   selectedId: null,
                   center: [focus[0], focus[1]],
                   position: 'medium',
@@ -1262,7 +1282,7 @@ export default function Explore() {
           {selected ? (
             <ParkingDetails
               parking={selected}
-              location={location.point}
+              location={currentLocation}
               favorite={local.state.favorites.some(
                 (item) => item.key === recordKey(selected),
               )}
@@ -1304,15 +1324,21 @@ export default function Explore() {
               })}
               contentContainerStyle={{ paddingHorizontal: 16 }}
               ListHeaderComponent={
+                locationMessage ||
                 mapStatus === 'error' ||
                 (parking.status === 'error' && !samples) ? (
                   <StatusMessage
                     message={
-                      mapStatus === 'error'
+                      locationMessage ??
+                      (mapStatus === 'error'
                         ? 'The map couldn’t load.'
-                        : parkingError
+                        : parkingError)
                     }
                     onRetry={() => {
+                      if (locationMessage) {
+                        centerOnMyLocation()
+                        return
+                      }
                       setRevision((current) => current + 1)
                       setMapRevision((current) => current + 1)
                     }}
@@ -1380,6 +1406,7 @@ export default function Explore() {
         </View>
       ) : null}
       {areaRefresh &&
+      farFromCenter &&
       discoveryVisible &&
       !selected &&
       sheet.position !== 'expanded' ? (

@@ -17,6 +17,7 @@ export type ParkingMapProps = {
   destination: Coordinate | null
   draftPoints: Coordinate[]
   drawing: boolean
+  searching?: boolean
   onPan?: () => void
   onSelect: (id: string) => void
   onMapPress: (point: Coordinate) => void

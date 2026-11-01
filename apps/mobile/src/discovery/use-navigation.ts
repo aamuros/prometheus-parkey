@@ -1,5 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { Platform } from 'react-native'
 
 import {
@@ -28,8 +35,10 @@ function initialNavigation(): NavigationState {
   // Refresh restores the spot, never starts an external request or a stale confirmation.
   return { ...state, route: false, consent: false }
 }
-export function useNavigation() {
+export function useNavigation(onRouteExit?: () => void) {
+  const routeExited = useEffectEvent(() => onRouteExit?.())
   const [state, setState] = useState(initialNavigation)
+  const [cameraRevision, setCameraRevision] = useState(0)
   const current = useRef(state)
   const pendingClose = useRef<Partial<NavigationState> | null>(null)
   const touched = useRef(false)
@@ -43,6 +52,7 @@ export function useNavigation() {
         !cameraCommand
       )
         return
+      if (patch.center) setCameraRevision((value) => value + 1)
       touched.current = true
       current.current = next
       if (web) {
@@ -98,6 +108,7 @@ export function useNavigation() {
         ...pendingClose.current,
       }
       pendingClose.current = null
+      if (current.current.route && !next.route) routeExited()
       current.current = next
       window.history.replaceState(
         window.history.state,
@@ -119,5 +130,8 @@ export function useNavigation() {
       }),
     ).catch(() => undefined)
   }, [state.filter, state.position, state.fees])
-  return useMemo(() => ({ state, update, close }), [state, update, close])
+  return useMemo(
+    () => ({ state, update, close, cameraRevision }),
+    [state, update, close, cameraRevision],
+  )
 }

@@ -238,6 +238,12 @@ export default function NativeMap(props: ParkingMapProps) {
           if (props.drawing) return
           event.stopPropagation()
           const feature = event.nativeEvent.features[0]
+          if (props.searching && feature?.geometry.type === 'Point') {
+            const [lng, lat] = feature.geometry.coordinates
+            if (lng !== undefined && lat !== undefined)
+              props.onMapPress([lng, lat])
+            return
+          }
           const clusterId: unknown = feature?.properties?.cluster_id
           if (
             typeof clusterId === 'number' &&

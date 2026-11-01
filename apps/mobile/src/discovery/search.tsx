@@ -176,7 +176,7 @@ export function DestinationSearch({
       style={[
         styles.container,
         compact && styles.compactContainer,
-        { maxHeight: Math.max(0, (visibleBottom ?? height) - cardTop - 12) },
+        { maxHeight: Math.max(0, (visibleBottom ?? height) - cardTop - 64) },
         ui.shadow,
       ]}
     >
