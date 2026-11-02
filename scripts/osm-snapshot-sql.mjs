@@ -23,11 +23,12 @@ create temporary table osm_snapshot on commit drop as
 select value as record from jsonb_array_elements(${payload}::jsonb);
 insert into public.discovery_parking (
  source_id, source_record_id, source_url, source_updated_at, name, kind, geometry,
- side, address, fees, hours, verification, published
+ side, address, fees, hours, verification, published, osm_tags, osm_edited_at, entrances
 )
 select '${sourceId}', record->>'id', record->>'sourceUrl', (record->>'sourceUpdatedAt')::timestamptz,
  record->>'name', record->>'kind', extensions.st_setsrid(extensions.st_geomfromgeojson((record->'geometry')::text),4326),
- record->>'side', record->>'address', record->>'fees', record->>'hours', 'unverified', true
+ record->>'side', record->>'address', record->>'fees', record->>'hours', 'unverified', true,
+ coalesce(record->'osmTags', '{}'::jsonb), (record->>'osmEditedAt')::timestamptz, coalesce(record->'entrances', '[]'::jsonb)
 from osm_snapshot on conflict (source_id, source_record_id) do nothing;
 insert into public.discovery_regulations (parking_id, source_id, description, source_url, observed_at, published)
 select p.id, '${sourceId}', rule->>'description', rule->>'sourceUrl', (rule->>'observedAt')::timestamptz, true

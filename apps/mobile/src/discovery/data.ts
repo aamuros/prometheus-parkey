@@ -25,6 +25,15 @@ export function isParking(value: unknown): value is DiscoveryParking {
   )
     return false
   return (
+    (value.osmTags === undefined ||
+      (isObject(value.osmTags) &&
+        Object.values(value.osmTags).every(
+          (tag) => typeof tag === 'string',
+        ))) &&
+    (value.osmEditedAt === undefined || nullableDate(value.osmEditedAt)) &&
+    (value.entrances === undefined ||
+      (Array.isArray(value.entrances) &&
+        value.entrances.every(isCoordinate))) &&
     typeof value.id === 'string' &&
     value.id.length > 0 &&
     typeof value.name === 'string' &&

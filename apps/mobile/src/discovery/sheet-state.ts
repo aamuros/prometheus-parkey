@@ -47,6 +47,7 @@ export function sheetHeights(
   selected: boolean,
   fontScale = 1,
   headerHeight = 0,
+  overlayHeight = 0,
 ) {
   const usable = Math.max(1, height - top)
   const compact = selected
@@ -55,7 +56,7 @@ export function sheetHeights(
         usable * 0.6,
       )
     : Math.min(
-        Math.max(120, headerHeight + Math.max(72, 23 * fontScale + 20)) +
+        Math.max(210, headerHeight + Math.max(80, 23 * fontScale + 20)) +
           Math.max(bottom, 12),
         usable * 0.6,
       )
@@ -69,7 +70,14 @@ export function sheetHeights(
       usable * 0.45,
     ),
   )
-  return { compact, medium, expanded }
+  // Browsing controls must remain usable when the device rotates to landscape.
+  // The full sheet deliberately replaces those controls to expose the results.
+  const browseLimit = Math.max(0, height - overlayHeight - 12)
+  return {
+    compact: selected ? compact : Math.min(compact, browseLimit),
+    medium: selected ? medium : Math.min(medium, browseLimit),
+    expanded,
+  }
 }
 
 /** Reserve the measured overlays while keeping a usable viewport on short screens. */

@@ -3,17 +3,15 @@ import { Pressable, StyleSheet, Text, View } from 'react-native'
 
 import type { ParkingReference } from './model'
 import { parkingDetailData } from './parking-detail-data'
+import { FigmaAsset } from './figma-assets'
 import { colors, IconButton, ui } from './ui'
 
-export const PARKING_ROW_HEIGHT = 80
+export const PARKING_ROW_HEIGHT = 96
 export function ParkingRow({
   parking,
   reference,
   onPress,
   onDirections,
-  onFavorite,
-  favorite,
-  disabled = false,
   selected = false,
   testID,
 }: {
@@ -35,6 +33,9 @@ export function ParkingRow({
   )
   return (
     <View testID={testID} style={[styles.row, selected && styles.selected]}>
+      <View style={styles.badge}>
+        <FigmaAsset name="pin" size={28} />
+      </View>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`${text.title}. ${text.meta}. Open parking details`}
@@ -56,25 +57,28 @@ export function ParkingRow({
         onPress={onDirections}
         style={styles.directions}
       />
-      <IconButton
-        icon="star"
-        label={`${favorite ? 'Unsave' : 'Save'} ${text.title}`}
-        selected={favorite}
-        disabled={disabled || parking.sourceKind === 'sample'}
-        onPress={onFavorite}
-        style={styles.icon}
-      />
     </View>
   )
 }
 const styles = StyleSheet.create({
   row: {
-    height: PARKING_ROW_HEIGHT,
+    minHeight: 80,
+    height: PARKING_ROW_HEIGHT - 16,
+    marginBottom: 16,
+    padding: 12,
+    borderRadius: 20,
+    backgroundColor: colors.soft,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.line,
+  },
+  badge: {
+    width: 56,
+    height: 56,
+    borderRadius: 14,
+    backgroundColor: colors.selected,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   content: {
     flex: 1,
@@ -84,7 +88,6 @@ const styles = StyleSheet.create({
     gap: 4,
     borderRadius: 12,
   },
-  icon: { width: 44, height: 44 },
   directions: { width: 44, height: 44, backgroundColor: colors.action },
   selected: { backgroundColor: colors.selected },
 })

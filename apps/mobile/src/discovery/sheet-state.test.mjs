@@ -67,7 +67,8 @@ test('snap heights fit safe areas on small screens, portrait, and landscape', ()
       assert.ok(h.expanded <= height - top)
     }
   }
-  assert.equal(sheetHeights(844, 59, 34, false).compact, 154)
+  // The home sheet has room for its header and a complete 80px parking card.
+  assert.ok(sheetHeights(844, 59, 34, false, 1, 96).compact >= 96 + 80 + 34)
   const largeText = sheetHeights(568, 20, 0, false, 2, 156)
   assert.ok(largeText.compact > sheetHeights(568, 20, 0, false).compact)
   assert.ok(largeText.medium <= largeText.expanded)
@@ -129,4 +130,43 @@ test('camera padding always retains a viewport on short screens and rejects nega
     assert.ok(padding.top + padding.bottom <= Math.max(0, height - 64))
   }
   assert.deepEqual(discoveryCameraPadding(568, -10, -30), { top: 0, bottom: 0 })
+})
+
+test('browse sheets leave the tab bar and map visible, including on short phones', () => {
+  for (const [height, top, bottom] of [
+    [844, 47, 28],
+    [568, 20, 0],
+    [320, 0, 21],
+  ]) {
+    const tabHeight = 58 + Math.max(bottom, 16)
+    const heights = sheetHeights(height - tabHeight, top, bottom, false, 1, 96)
+    assert.ok(heights.compact <= heights.medium)
+    assert.ok(heights.expanded + tabHeight <= height - top)
+    assert.ok(heights.compact + tabHeight < height - top)
+  }
+})
+
+test('browsing sheets leave measured search and filters unobstructed in landscape', () => {
+  const screenHeight = 375
+  const tabHeight = 74
+  const overlayHeight = 183
+  const heights = sheetHeights(
+    screenHeight - tabHeight,
+    0,
+    0,
+    false,
+    1,
+    96,
+    overlayHeight,
+  )
+  for (const position of ['compact', 'medium']) {
+    assert.ok(
+      screenHeight - tabHeight - heights[position] >= overlayHeight + 12,
+    )
+  }
+  assert.ok(heights.expanded > heights.medium)
+  assert.deepEqual(
+    sheetHeights(844, 0, 0, true, 1, 96, 183),
+    sheetHeights(844, 0, 0, true, 1, 96),
+  )
 })

@@ -264,7 +264,7 @@ Secret keys never belong in `EXPO_PUBLIC_` variables. Supabase configuration doe
 
 ## Initial OSM data and licensing
 
-The bundled JSON contains **41 real OSM records, including 6 street segments**,
+The bundled JSON contains **43 real OSM records, including 6 street segments**,
 from the WGS84 box `[121.024, 14.558, 121.041, 14.572]` around Poblacion and nearby
 Makati streets. Its source snapshot date is recorded on every record. These are
 not field-verified records. OSM geometry and tags may be outdated or incomplete.

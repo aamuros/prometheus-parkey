@@ -1,17 +1,18 @@
-import regular from '../../assets/fonts/Inter-Regular.ttf'
-import semibold from '../../assets/fonts/Inter-SemiBold.ttf'
-import bold from '../../assets/fonts/Inter-Bold.ttf'
+import regular from '../../assets/fonts/Nunito_600SemiBold.ttf'
+import semibold from '../../assets/fonts/Nunito_700Bold.ttf'
+import bold from '../../assets/fonts/Nunito_800ExtraBold.ttf'
+import black from '../../assets/fonts/Nunito_900Black.ttf'
 
-// Wise's product UI uses Inter. Bundle static faces for consistent native/web
-// rendering, without a font CDN or synthesized weights.
 export const fonts = {
-  regular: 'InterRegular',
-  semibold: 'InterSemiBold',
-  bold: 'InterBold',
+  regular: 'NunitoSemiBold',
+  semibold: 'NunitoBold',
+  bold: 'NunitoExtraBold',
+  black: 'NunitoBlack',
 }
 
 export const fontSources = {
   [fonts.regular]: regular,
   [fonts.semibold]: semibold,
   [fonts.bold]: bold,
+  [fonts.black]: black,
 }

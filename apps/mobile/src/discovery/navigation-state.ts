@@ -12,7 +12,7 @@ export type NavigationState = {
   query: string
   searchPoint: Coordinate | null
   searching: boolean
-  panel: 'saved' | 'info' | 'add' | null
+  panel: 'saved' | 'info' | 'add' | 'you' | null
   route: boolean
   consent: boolean
   center: Coordinate
@@ -78,7 +78,9 @@ export function parseNavigation(
   state.searching = params.get('search') === '1'
   const panel = params.get('panel')
   state.panel =
-    panel === 'saved' || panel === 'info' || panel === 'add' ? panel : null
+    panel === 'saved' || panel === 'info' || panel === 'add' || panel === 'you'
+      ? panel
+      : null
   state.route = params.get('route') === '1'
   state.consent = params.get('consent') === '1'
   if (params.has('lng') && params.has('lat')) {

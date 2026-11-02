@@ -1,8 +1,10 @@
-# Inter
+# Bundled fonts
 
-Parkey uses Inter for its mobile product UI, matching the type family used in
-the supplied Wise Home reference. Regular (400), SemiBold (600), and Bold (700)
-are bundled locally so typography works without a font service.
+The mobile discovery UI uses Nunito to match the Parkey Playful UI Figma designs.
+SemiBold (600), Bold (700), ExtraBold (800), and Black (900) are the unmodified
+TTFs from `@expo-google-fonts/nunito` version `0.4.2`. Nunito is distributed under
+the SIL Open Font License; see [Nunito-OFL.txt](./Nunito-OFL.txt). The source
+package license is preserved in [Nunito-LICENSE.txt](./Nunito-LICENSE.txt).
 
-Source: the unmodified TTFs in `@expo-google-fonts/inter` version `0.4.2`.
-Inter is distributed under the SIL Open Font License; see [OFL.txt](./OFL.txt).
+The existing Inter faces remain available for older assets. They are from
+`@expo-google-fonts/inter` version `0.4.2`, under [OFL.txt](./OFL.txt).

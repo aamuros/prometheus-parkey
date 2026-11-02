@@ -16,6 +16,7 @@ import type { Coordinate } from '@parkey/shared-types'
 import { config } from './config'
 import { searchDestinations } from './data'
 import type { Destination } from './data'
+import { FigmaAsset } from './figma-assets'
 import { fonts } from './typography'
 import { Button, colors, Icon, IconButton, UndoToast, ui } from './ui'
 import { useSearchHistory } from './use-search-history'
@@ -29,6 +30,7 @@ export function DestinationSearch({
   onLocate,
   onActive,
   onSaved,
+  layout = 'overlay',
 }: {
   query: string
   onQuery: (query: string) => void
@@ -38,6 +40,7 @@ export function DestinationSearch({
   onLocate: () => void
   onActive: (active: boolean) => void
   onSaved: () => void
+  layout?: 'overlay' | 'sheet'
 }) {
   const { height } = useWindowDimensions()
   const compact = height < 700
@@ -171,35 +174,51 @@ export function DestinationSearch({
       ref={container}
       testID="destination-search-card"
       onLayout={() =>
+        layout === 'overlay' &&
         container.current?.measureInWindow((_x, y) => setCardTop(y))
       }
       style={[
         styles.container,
         compact && styles.compactContainer,
-        { maxHeight: Math.max(0, (visibleBottom ?? height) - cardTop - 64) },
+        layout === 'sheet'
+          ? { flexShrink: 1, maxHeight: (visibleBottom ?? height) * 0.55 }
+          : {
+              maxHeight: Math.max(0, (visibleBottom ?? height) - cardTop - 64),
+            },
         ui.shadow,
       ]}
     >
-      <View style={[styles.header, compact && styles.compactHeader]}>
-        <Text style={[styles.brand, compact && styles.compactBrand]}>
-          parkey
-        </Text>
-        <Pressable
-          accessibilityRole="button"
-          onPress={onSaved}
-          style={({ pressed }) => [styles.savedAction, pressed && ui.pressed]}
-        >
-          <Text style={[ui.muted, ui.link]}>Saved places</Text>
-        </Pressable>
-      </View>
+      {layout === 'overlay' ? (
+        <View style={[styles.header, compact && styles.compactHeader]}>
+          <Text style={[styles.brand, compact && styles.compactBrand]}>
+            parkey
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            onPress={onSaved}
+            accessibilityLabel="Open saved places"
+            style={({ pressed }) => [styles.savedAction, pressed && ui.pressed]}
+          >
+            <Text style={ui.small}>Makati</Text>
+          </Pressable>
+        </View>
+      ) : null}
       <View style={[styles.bar, focused && styles.focusedBar]}>
-        <Icon name="search" color={colors.ink} size={22} />
+        <FigmaAsset name="search" size={22} />
         <TextInput
           ref={input}
           testID="destination-query"
-          accessibilityLabel="Where do you need parking?"
-          placeholder="Where do you need parking?"
-          placeholderTextColor={colors.muted}
+          accessibilityLabel={
+            layout === 'sheet'
+              ? 'Search for an address'
+              : 'Where do you need parking?'
+          }
+          placeholder={
+            layout === 'sheet'
+              ? 'Search for an address'
+              : 'Where do you need parking?'
+          }
+          placeholderTextColor={colors.disabled}
           selectionColor={colors.action}
           maxLength={180}
           value={query}
@@ -409,7 +428,7 @@ function DestinationRow({
 
 const styles = StyleSheet.create({
   container: {
-    borderRadius: 24,
+    borderRadius: 28,
     backgroundColor: colors.surface,
     overflow: 'hidden',
     padding: 16,
@@ -424,17 +443,17 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 12,
     paddingHorizontal: 4,
-    paddingBottom: 16,
+    paddingBottom: 12,
   },
   bar: {
     flexShrink: 0,
-    minHeight: 56,
+    minHeight: 52,
     flexDirection: 'row',
     alignItems: 'center',
     paddingLeft: 14,
     paddingRight: 2,
     gap: 12,
-    borderRadius: 28,
+    borderRadius: 20,
     borderWidth: 2,
     borderColor: 'transparent',
     backgroundColor: colors.soft,
@@ -442,13 +461,14 @@ const styles = StyleSheet.create({
   focusedBar: { borderColor: colors.accent },
   brand: {
     fontFamily: fonts.bold,
-    fontSize: 26,
+    fontSize: 28,
     lineHeight: 32,
     letterSpacing: -1,
     color: colors.brand,
   },
   savedAction: {
-    minHeight: 48,
+    minHeight: 28,
+    backgroundColor: colors.soft,
     justifyContent: 'center',
     paddingHorizontal: 8,
     borderRadius: 24,
@@ -458,8 +478,8 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     paddingVertical: 14,
-    fontSize: 16,
-    lineHeight: 24,
+    fontSize: 15,
+    lineHeight: 21,
     color: colors.ink,
   },
   results: { flexShrink: 1, minHeight: 0, maxHeight: 360, marginTop: 8 },

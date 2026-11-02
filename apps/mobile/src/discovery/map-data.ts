@@ -45,7 +45,7 @@ export function parkingMapSources(
     features: [],
   }
   // Stable input order also breaks ties between pins at the same latitude.
-  for (const feature of parkingGeoJSON(records, selectedId).features.toSorted(
+  for (const feature of [...parkingGeoJSON(records, selectedId).features].sort(
     (a, b) => String(a.id).localeCompare(String(b.id)),
   )) {
     if (feature.geometry.type === 'LineString') {

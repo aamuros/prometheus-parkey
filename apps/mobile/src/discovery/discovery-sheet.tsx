@@ -19,7 +19,11 @@ import { useReducedMotion } from './use-reduced-motion'
 
 export function DiscoverySheet({
   position,
+  bottom = 0,
+  overlayHeight = 0,
+  accessory,
   selected,
+  expandable = true,
   title,
   summary,
   onPositionChange,
@@ -28,6 +32,10 @@ export function DiscoverySheet({
   children,
 }: {
   position: SheetPosition
+  bottom?: number
+  overlayHeight?: number
+  accessory?: ReactNode
+  expandable?: boolean
   selected: boolean
   title: string
   summary: string
@@ -42,15 +50,33 @@ export function DiscoverySheet({
   const heights = useMemo(
     () =>
       sheetHeights(
-        height,
+        height - bottom,
         insets.top,
         insets.bottom,
         selected,
         fontScale,
         headerHeight,
+        overlayHeight,
       ),
-    [height, insets.top, insets.bottom, selected, fontScale, headerHeight],
+    [
+      height,
+      bottom,
+      insets.top,
+      insets.bottom,
+      selected,
+      fontScale,
+      headerHeight,
+      overlayHeight,
+    ],
   )
+  const [contentHeight, setContentHeight] = useState(0)
+  const contentDriven = selected
+  const selectedHeight = Math.min(
+    (height - insets.top - bottom) * (position === 'expanded' ? 0.8 : 1),
+    contentHeight + 32 + Math.max(insets.bottom, 16),
+  )
+  const targetHeight =
+    contentDriven && contentHeight > 0 ? selectedHeight : heights[position]
   const [motion] = useState(() => new Animated.Value(heights[position]))
   const reduced = useReducedMotion()
   const root = useRef<ComponentRef<typeof View>>(null)
@@ -60,26 +86,28 @@ export function DiscoverySheet({
     const handle = element.querySelector<HTMLElement>(
       '[data-testid=parking-sheet-handle]',
     )
-    if (handle) handle.title = 'Drag to resize; click to toggle peek and half'
+    if (handle) handle.title = 'Drag to resize; click to change sheet size'
     const wheel = (event: WheelEvent) => {
       if (position !== 'expanded' && event.deltaY > 0) {
         event.preventDefault()
-        onPositionChange(stepSheet(position, 1))
+        onPositionChange(
+          selected && !expandable ? 'medium' : stepSheet(position, 1),
+        )
       }
     }
     element.addEventListener('wheel', wheel, { passive: false })
     return () => element.removeEventListener('wheel', wheel)
-  }, [position, onPositionChange])
+  }, [position, onPositionChange, selected, expandable])
   useEffect(() => {
-    onHeightChange(heights[position])
+    onHeightChange(targetHeight)
     const animation = Animated.timing(motion, {
-      toValue: heights[position],
+      toValue: targetHeight,
       duration: reduced ? 0 : 180,
       useNativeDriver: false,
     })
     animation.start()
     return () => animation.stop()
-  }, [position, heights, motion, reduced, onHeightChange])
+  }, [targetHeight, motion, reduced, onHeightChange])
   const pan = useMemo(
     () =>
       PanResponder.create({
@@ -88,10 +116,14 @@ export function DiscoverySheet({
           Math.abs(gesture.dy) > Math.abs(gesture.dx),
         onPanResponderRelease: (_, gesture) => {
           if (Math.abs(gesture.dy) > 20 || Math.abs(gesture.vy) > 0.3)
-            onPositionChange(stepSheet(position, gesture.dy < 0 ? 1 : -1))
+            onPositionChange(
+              selected && !expandable
+                ? 'medium'
+                : stepSheet(position, gesture.dy < 0 ? 1 : -1),
+            )
         },
       }),
-    [position, onPositionChange],
+    [position, onPositionChange, selected, expandable],
   )
   return (
     <Animated.View
@@ -100,7 +132,16 @@ export function DiscoverySheet({
       style={[
         styles.sheet,
         ui.shadow,
-        { height: motion, paddingBottom: Math.max(insets.bottom, 16) },
+        {
+          // Continue the surface behind the rounded tab bar to cover its corners.
+          bottom: 0,
+          height: contentDriven ? undefined : Animated.add(motion, bottom),
+          maxHeight:
+            selected && position === 'expanded'
+              ? (height - insets.top - bottom) * 0.8 + bottom
+              : height - insets.top,
+          paddingBottom: bottom + Math.max(insets.bottom, 16),
+        },
       ]}
     >
       <View
@@ -111,24 +152,25 @@ export function DiscoverySheet({
         <View style={styles.top} {...pan.panHandlers}>
           <Pressable
             testID="parking-sheet-handle"
+            disabled={selected && !expandable}
             accessibilityRole="button"
-            accessibilityLabel={`Parking sheet: ${position === 'compact' ? 'peek' : position === 'medium' ? 'half' : 'full'}. Toggle peek and half`}
+            accessibilityLabel={`Parking sheet: ${position === 'compact' ? 'peek' : position === 'medium' ? 'half' : 'full'}. ${position === 'expanded' ? 'Collapse' : 'Expand'} parking sheet`}
             accessibilityState={{ expanded: position !== 'compact' }}
             onPress={() =>
-              onPositionChange(position === 'compact' ? 'medium' : 'compact')
+              onPositionChange(
+                selected
+                  ? expandable && position !== 'expanded'
+                    ? 'expanded'
+                    : 'medium'
+                  : position === 'expanded'
+                    ? 'compact'
+                    : stepSheet(position, 1),
+              )
             }
             style={styles.gripTouch}
           >
-            <View style={styles.grip} />
+            {!selected || expandable ? <View style={styles.grip} /> : null}
           </Pressable>
-          {selected ? (
-            <IconButton
-              icon="close"
-              label="Close parking details"
-              onPress={onClose}
-              style={styles.close}
-            />
-          ) : null}
         </View>
         {!selected ? (
           <Pressable
@@ -136,9 +178,17 @@ export function DiscoverySheet({
             accessibilityRole="button"
             accessibilityLabel={`${title}. ${summary}. Show parking results`}
             onPress={() =>
-              onPositionChange(position === 'compact' ? 'medium' : 'compact')
+              onPositionChange(
+                selected
+                  ? expandable && position !== 'expanded'
+                    ? 'expanded'
+                    : 'medium'
+                  : position === 'compact'
+                    ? 'medium'
+                    : 'compact',
+              )
             }
-            style={styles.header}
+            style={[styles.header, !!accessory && { paddingRight: 72 }]}
           >
             <Text
               accessibilityRole="header"
@@ -153,12 +203,28 @@ export function DiscoverySheet({
           </Pressable>
         ) : null}
       </View>
+      {accessory ? (
+        <View style={{ position: 'absolute', top: 36, right: 16 }}>
+          {accessory}
+        </View>
+      ) : null}
       <View
-        style={ui.flex}
+        style={contentDriven ? { flexShrink: 1 } : ui.flex}
+        onLayout={(event) => {
+          if (contentDriven) setContentHeight(event.nativeEvent.layout.height)
+        }}
         {...(position !== 'expanded' ? pan.panHandlers : {})}
       >
         {children}
       </View>
+      {selected ? (
+        <IconButton
+          icon="close"
+          label="Close parking details"
+          onPress={onClose}
+          style={styles.close}
+        />
+      ) : null}
     </Animated.View>
   )
 }
@@ -171,11 +237,11 @@ const styles = StyleSheet.create({
     maxWidth: 620,
     marginHorizontal: 'auto',
     backgroundColor: colors.surface,
-    borderTopLeftRadius: 32,
-    borderTopRightRadius: 32,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
     overflow: 'hidden',
   },
-  top: { height: 44, alignItems: 'center', justifyContent: 'center' },
+  top: { height: 32, alignItems: 'center', justifyContent: 'center' },
   gripTouch: {
     minHeight: 44,
     width: 120,
@@ -183,25 +249,27 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   grip: {
-    width: 36,
-    height: 4,
+    width: 40,
+    height: 5,
     borderRadius: 2,
     backgroundColor: colors.disabledSurface,
   },
   close: {
     position: 'absolute',
-    top: 0,
-    right: 8,
+    zIndex: 1,
+    top: 28,
+    right: 12,
     width: 44,
     height: 44,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.soft,
   },
-  header: { paddingHorizontal: 16, gap: 4, paddingBottom: 8, minHeight: 54 },
+  header: { paddingHorizontal: 16, gap: 4, paddingBottom: 16, minHeight: 64 },
 })
 export function MapAttribution({ onPress }: { onPress: () => void }) {
   return (
     <IconButton
       icon="info"
+      color={colors.disabled}
       label="Map data sources and attribution"
       onPress={onPress}
       style={[attributionStyles.touch, ui.shadow]}

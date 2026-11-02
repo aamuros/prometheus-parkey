@@ -4,6 +4,8 @@ import { Platform, Pressable, StyleSheet, Text, View } from 'react-native'
 import type { StyleProp, ViewStyle } from 'react-native'
 import Svg, { Circle, Path } from 'react-native-svg'
 
+import { FigmaAsset } from './figma-assets'
+import type { FigmaAssetName } from './figma-assets'
 import { colors } from './palette'
 import { parkingPin } from './parking-pin'
 import { fonts } from './typography'
@@ -63,6 +65,25 @@ export function Icon({
   size?: number
   filled?: boolean
 }) {
+  const asset: FigmaAssetName | undefined =
+    name === 'arrow' && color === colors.surface
+      ? 'arrow'
+      : name === 'close' && color === colors.muted
+        ? 'close'
+        : name === 'camera' && color === colors.disabled
+          ? 'camera'
+          : name === 'search' && color === colors.disabled
+            ? 'search'
+            : name === 'info' && color === colors.disabled
+              ? 'info'
+              : name === 'locate' && color === colors.action
+                ? 'locate'
+                : name === 'star' && !filled && color === colors.brand
+                  ? 'star'
+                  : name === 'pin' && color === colors.brand
+                    ? 'pin'
+                    : undefined
+  if (asset) return <FigmaAsset name={asset} size={size} />
   return (
     <Svg
       width={size}
@@ -118,7 +139,7 @@ export function IconButton({
       style={({ pressed }) => [
         ui.iconButton,
         style,
-        selected && ui.choiceSelected,
+        selected && ui.iconSelected,
         pressed && (selected ? ui.secondaryPressed : ui.iconPressed),
         disabled && ui.disabled,
         focused && ui.focused,
@@ -127,12 +148,24 @@ export function IconButton({
       <Icon
         name={icon}
         filled={selected}
+        size={
+          icon === 'close' || icon === 'info'
+            ? 18
+            : icon === 'star' || icon === 'locate'
+              ? 24
+              : 22
+        }
         color={
           disabled
             ? colors.disabled
             : selected
               ? colors.brandDeep
-              : (color ?? colors.action)
+              : (color ??
+                (icon === 'close' || icon === 'info'
+                  ? colors.muted
+                  : icon === 'star'
+                    ? colors.brand
+                    : colors.action))
         }
       />
     </Pressable>
@@ -178,7 +211,7 @@ export function Button({
       ]}
     >
       <Text style={[ui.buttonText, { color: foreground }]}>{children}</Text>
-      {icon ? <Icon name={icon} color={foreground} size={19} /> : null}
+      {icon ? <Icon name={icon} color={foreground} size={22} /> : null}
     </Pressable>
   )
 }
@@ -229,8 +262,8 @@ export const ui = StyleSheet.create({
   flex: { flex: 1 },
   body: {
     fontFamily: fonts.regular,
-    fontSize: 16,
-    lineHeight: 24,
+    fontSize: 15,
+    lineHeight: 21,
     color: colors.ink,
   },
   muted: {
@@ -241,21 +274,21 @@ export const ui = StyleSheet.create({
   },
   small: {
     fontFamily: fonts.regular,
-    fontSize: 12,
+    fontSize: 13,
     lineHeight: 18,
     color: colors.muted,
   },
   link: { color: colors.brandDeep, fontFamily: fonts.semibold },
   error: { color: colors.error },
   title: {
-    fontFamily: fonts.semibold,
-    fontSize: 30,
-    lineHeight: 36,
-    letterSpacing: -0.63,
+    fontFamily: fonts.bold,
+    fontSize: 28,
+    lineHeight: 34,
+    letterSpacing: -0.14,
     color: colors.ink,
   },
   sectionTitle: {
-    fontFamily: fonts.semibold,
+    fontFamily: fonts.bold,
     fontSize: 22,
     lineHeight: 28,
     letterSpacing: -0.4,
@@ -263,7 +296,7 @@ export const ui = StyleSheet.create({
   },
   heading: {
     fontFamily: fonts.semibold,
-    fontSize: 16,
+    fontSize: 18,
     lineHeight: 24,
     letterSpacing: -0.2,
     color: colors.ink,
@@ -279,12 +312,12 @@ export const ui = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: colors.canvas,
+    backgroundColor: colors.soft,
     alignItems: 'center',
     justifyContent: 'center',
   },
   button: {
-    minHeight: 52,
+    minHeight: 56,
     paddingHorizontal: 24,
     paddingVertical: 14,
     borderRadius: 999,
@@ -295,9 +328,9 @@ export const ui = StyleSheet.create({
     gap: 10,
   },
   buttonText: {
-    fontFamily: fonts.semibold,
+    fontFamily: fonts.bold,
     flexShrink: 1,
-    fontSize: 16,
+    fontSize: 17,
     lineHeight: 24,
     color: colors.surface,
     textAlign: 'center',
@@ -306,15 +339,16 @@ export const ui = StyleSheet.create({
     backgroundColor: colors.selected,
   },
   choice: {
-    minHeight: 48,
-    paddingVertical: 13,
-    paddingHorizontal: 20,
+    minHeight: 44,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
     borderRadius: 999,
     backgroundColor: colors.surface,
-    boxShadow: `inset 0px 0px 0px 1px ${colors.border}`,
+    boxShadow: `0px 4px 16px rgba(30, 27, 56, 0.08)`,
   },
+  iconSelected: { backgroundColor: colors.selected },
   choiceSelected: {
-    backgroundColor: colors.selected,
+    backgroundColor: colors.brand,
     boxShadow: 'none',
   },
   choiceText: {
@@ -323,7 +357,7 @@ export const ui = StyleSheet.create({
     lineHeight: 20,
     color: colors.ink,
   },
-  choiceTextSelected: { color: colors.brandDeep },
+  choiceTextSelected: { color: colors.surface },
   pressed: { backgroundColor: colors.soft },
   iconPressed: { backgroundColor: colors.disabledSurface },
   buttonPressed: { backgroundColor: colors.actionPressed },
@@ -345,7 +379,7 @@ export const ui = StyleSheet.create({
     gap: 12,
     padding: 16,
     borderRadius: 16,
-    backgroundColor: colors.canvas,
+    backgroundColor: colors.soft,
     alignItems: 'flex-start',
   },
   input: {

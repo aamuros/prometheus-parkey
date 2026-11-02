@@ -127,3 +127,11 @@ test('refresh keeps the chosen search location distinct from the map focus on ne
     null,
   )
 })
+
+test('Your parking restores through links and Back returns to the map', () => {
+  const state = { ...navigationDefaults, panel: 'you' }
+  assert.deepEqual(parseNavigation(navigationSearch(state)), state)
+  const layers = navigationLayers(state)
+  assert.equal(layers.at(-1).panel, 'you')
+  assert.equal(layers.at(-2).panel, null)
+})

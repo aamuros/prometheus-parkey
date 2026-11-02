@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { parkingDetailData } from './parking-detail-data.ts'
+import {
+  detailDistance,
+  parkingDetailData,
+  parkingDestination,
+} from './parking-detail-data.ts'
+import { spotHours } from './spot-hours.ts'
 import { sampleParking } from './sample-data.ts'
 
 const minimal = {
@@ -12,106 +17,107 @@ const minimal = {
   hours: null,
   regulations: [],
 }
-
-test('unnamed minimal records have a type fallback with no missing fields or map-center distance', () => {
-  assert.deepEqual(parkingDetailData(minimal, null), {
-    title: 'Parking lot',
-    meta: 'Parking lot',
-    rows: [],
-  })
-  for (const name of ['', '   ', 'Unknown'])
-    assert.equal(
-      parkingDetailData({ ...minimal, name }, null).title,
-      'Parking lot',
-    )
+test('sparse records omit repeated type, remote distance, and empty facts', () => {
+  const details = parkingDetailData(minimal, [0, 0])
+  assert.equal(details.title, 'Parking lot')
+  assert.equal(details.meta, '')
+  assert.equal(details.sparse, true)
+  assert.deepEqual(details.rows, [])
+  assert.deepEqual(details.chips, [])
   assert.equal(
     parkingDetailData(
-      { ...minimal, kind: 'street', name: 'Unnamed street parking' },
+      {
+        ...minimal,
+        kind: 'street',
+        osmTags: { 'addr:street': 'Jupiter Street' },
+      },
       null,
     ).title,
-    'Street parking',
+    'Street parking on Jupiter Street',
+  )
+  assert.equal(
+    parkingDetailData({ ...minimal, name: 'Named lot' }, null).title,
+    'Named lot',
   )
 })
-
-test('metadata only claims Free or Paid for explicit fee evidence, without inventing a price', () => {
-  for (const fees of ['Free', 'free parking', 'No charge']) {
-    const detail = parkingDetailData({ ...minimal, fees }, null)
-    assert.equal(detail.meta, 'Parking lot · Free')
-    assert.deepEqual(detail.rows, [])
-  }
-  const paid = parkingDetailData(
-    { ...minimal, fees: 'Fee applies; amount unavailable' },
+test('distance boundaries follow driver-focused units', () => {
+  for (const [meters, expected] of [
+    [354, '350 m'],
+    [1000, '1.0 km'],
+    [9999, '10.0 km'],
+    [10000, '10 km'],
+    [99999, '100 km'],
+    [100000, '100 km'],
+    [100001, undefined],
+  ])
+    assert.equal(detailDistance(meters), expected)
+})
+test('explicit fees, capacity and restricted access are preserved without claiming availability', () => {
+  const detail = parkingDetailData(
+    {
+      ...minimal,
+      osmTags: {
+        fee: 'yes',
+        charge: '₱40/hr',
+        capacity: '120',
+        access: 'customers',
+        'capacity:disabled': '2',
+        'payment:cash': 'yes',
+      },
+    },
     null,
   )
-  assert.equal(paid.meta, 'Parking lot · Paid')
-  assert.deepEqual(paid.rows, [])
-  const price = parkingDetailData({ ...minimal, fees: 'PHP 50/hour' }, null)
-  assert.equal(price.meta, 'Parking lot · Paid')
-  assert.equal(price.rows[0].value, 'PHP 50/hour')
-  const conditional = parkingDetailData(
-    { ...minimal, fees: 'Free for customers; paid otherwise' },
-    null,
+  assert.deepEqual(detail.chips, ['₱40/hr', '120 spaces'])
+  assert.equal(detail.warning, 'Customers only')
+  assert.equal(detail.accessibleSpaces, 2)
+  assert.deepEqual(detail.paymentMethods, ['cash'])
+  assert.ok(!JSON.stringify(detail).includes('available'))
+})
+test('invalid hours disappear; OSM parser evaluates in the spot timezone', () => {
+  const makati = [121.031, 14.566]
+  assert.deepEqual(spotHours('nonsense', makati), {})
+  assert.equal(spotHours('24/7', makati).summary, 'Open 24 hours')
+  const now = new Date('2026-11-02T02:00:00Z') // Monday 10 AM in Makati
+  assert.equal(
+    spotHours('Mo-Fr 08:00-22:00', makati, now).summary,
+    'Open now · closes 10 PM',
   )
-  assert.equal(conditional.meta, 'Parking lot')
-  assert.equal(conditional.rows[0].value, 'Free for customers; paid otherwise')
+  assert.equal(
+    spotHours('Mo-Fr 08:00-22:00', [-74.006, 40.713], now).summary,
+    'Closed · opens Mon 8 AM',
+  )
+  assert.equal(
+    spotHours('Mo-Fr 08:00-22:00', makati, now).week.find((d) => d.today).day,
+    'Monday',
+  )
 })
-
-test('distance uses an actual user coordinate and contains no reference or helper copy', () => {
-  const detail = parkingDetailData(minimal, [121.031, 14.566])
-  assert.match(detail.meta, /^Parking lot · \d+(?:\.\d+)? (?:m|km)$/)
+test('directions select the entrance nearest the driver, never a nearby unrelated node', () => {
+  const entrances = [
+    [121.03, 14.566],
+    [121.035, 14.566],
+  ]
+  assert.deepEqual(
+    parkingDestination({ ...minimal, entrances }, [121.036, 14.566]),
+    entrances[1],
+  )
+  assert.deepEqual(
+    parkingDestination({ ...minimal, entrances: [] }, null),
+    minimal.geometry.coordinates,
+  )
 })
-
-test('an import geometry warning does not create an empty expanded state', () => {
+test('import geometry warnings do not expand a sparse spot; import date is not edit date', () => {
   const detail = parkingDetailData(
     {
       ...minimal,
       regulations: [
         {
-          description:
-            'Map point may be a facility centroid, not an entrance. Confirm access on arrival.',
+          description: 'Map point may be a facility centroid, not an entrance.',
           sourceLabel: 'Parkey import geometry note',
-          sourceUrl: null,
-          observedAt: null,
         },
       ],
     },
     null,
   )
-  assert.deepEqual(detail.rows, [])
-})
-
-test('expanded rows preserve real schedules and restrictions while removing placeholders and duplicates', () => {
-  const rule = (description) => ({
-    description,
-    sourceLabel: 'Test',
-    sourceUrl: null,
-    observedAt: null,
-  })
-  const detail = parkingDetailData(
-    {
-      ...minimal,
-      name: 'Jupiter Street',
-      kind: 'street',
-      hours: 'Mo-Sa 07:00-17:00',
-      fees: 'Unknown',
-      regulations: [
-        rule('Access recorded by OpenStreetMap: customers'),
-        rule('Access recorded by OpenStreetMap: customers'),
-        rule('Maximum stay: 3 h'),
-        rule('Unknown'),
-        rule(''),
-      ],
-    },
-    null,
-  )
-  assert.equal(detail.title, 'Jupiter Street')
-  assert.deepEqual(
-    detail.rows.map((row) => row.value),
-    ['Mo-Sa 07:00-17:00', 'Access: customers', 'Maximum stay: 3 h'],
-  )
-  assert.ok(
-    detail.rows.every(
-      (row) => !/unknown|unavailable|capacity/i.test(row.value),
-    ),
-  )
+  assert.equal(detail.sparse, true)
+  assert.equal(detail.updated, undefined)
 })

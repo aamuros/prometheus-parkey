@@ -1,12 +1,18 @@
 import { useEffect, useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Pressable, StyleSheet, Text, View } from 'react-native'
 import type { Coordinate, DiscoveryParking } from '@parkey/shared-types'
 
+import { PILOT_CENTER } from './model'
 import { parkingTitle } from './presentation'
 import { resolveSaved } from './local-state'
 import type { SavedRecord } from './local-state'
 import { ModalSheet } from './sheets'
-import { Button, Choice, colors, Icon, Notice, UndoToast, ui } from './ui'
+import { DestinationSearch } from './search'
+import { ParkingPage, ParkingTile } from './parking-profile'
+import { useSavedAddresses } from './saved-addresses'
+import type { AddressKind } from './saved-addresses'
+import { FigmaAsset } from './figma-assets'
+import { Button, Choice, colors, IconButton, Notice, UndoToast, ui } from './ui'
 import type { useLocalState } from './use-local-state'
 
 export function SavedPlaces({
@@ -18,7 +24,9 @@ export function SavedPlaces({
   onCenter,
   onDirections,
   onSelect,
-  onClose,
+  onAddPlace,
+  onParkingDirections,
+  onLocateAddress,
 }: {
   local: ReturnType<typeof useLocalState>
   records: DiscoveryParking[]
@@ -28,9 +36,17 @@ export function SavedPlaces({
   onCenter: (point: Coordinate) => void
   onDirections: () => void
   onSelect: (record: DiscoveryParking) => void
-  onClose: () => void
+  onAddPlace: () => void
+  onParkingDirections: (record: DiscoveryParking) => void
+  onLocateAddress: () => Promise<Coordinate | null>
 }) {
-  const [tab, setTab] = useState<'favorites' | 'recents'>('favorites')
+  const [managing, setManaging] = useState(false)
+  const [tab, setTab] = useState<'favorites' | 'recents'>('recents')
+  const savedAddresses = useSavedAddresses()
+  const [editing, setEditing] = useState<AddressKind | null>(null)
+  const [addressQuery, setAddressQuery] = useState('')
+  const [addressBusy, setAddressBusy] = useState(false)
+  const [addressError, setAddressError] = useState<string | null>(null)
   const [toast, setToast] = useState<{
     message: string
     undo: () => void
@@ -55,14 +71,32 @@ export function SavedPlaces({
             }
             style={({ pressed }) => [styles.savedAction, pressed && ui.pressed]}
           >
-            <Icon name="pin" color={colors.brandDeep} size={24} />
+            <View style={styles.badge}>
+              <FigmaAsset name="pin" size={28} />
+            </View>
             <View style={ui.flex}>
-              <Text style={ui.heading}>{title}</Text>
-              <Text style={ui.muted}>
-                {record ? 'View parking' : 'Show saved area'}
+              <Text style={ui.heading} numberOfLines={1}>
+                {title}
+              </Text>
+              <Text style={ui.small} numberOfLines={1}>
+                {record
+                  ? `${record.kind === 'street' ? 'Street' : record.kind === 'garage' ? 'Garage' : 'Lot'}${record.fees ? ` · ${record.fees}` : ''}`
+                  : 'Show saved area'}
               </Text>
             </View>
           </Pressable>
+          {record ? (
+            <IconButton
+              icon="arrow"
+              label={`Directions to ${title}`}
+              onPress={() => onParkingDirections(record)}
+              color={colors.surface}
+              style={{ width: 44, height: 44, backgroundColor: colors.action }}
+              disabled={record.sourceKind === 'sample'}
+            />
+          ) : null}
+        </View>
+        {managing ? (
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={`Remove ${title} from ${tab === 'favorites' ? 'favorites' : 'recently viewed places'}`}
@@ -92,7 +126,7 @@ export function SavedPlaces({
               Remove
             </Text>
           </Pressable>
-        </View>
+        ) : null}
         {!record ? (
           <Text style={ui.small}>
             This record isn’t in the loaded map data. It may be outside this
@@ -103,13 +137,150 @@ export function SavedPlaces({
     )
   }
   return (
-    <ModalSheet title="Saved places" onClose={onClose}>
+    <ParkingPage title="Saved places" subtitle="Your usual spots, one tap away">
+      <View style={ui.row}>
+        {(['home', 'work'] as const).map((kind) => (
+          <ParkingTile
+            key={kind}
+            title={kind === 'home' ? 'Home' : 'Work'}
+            subtitle={savedAddresses.addresses[kind]?.name ?? 'Set address'}
+            icon={kind}
+            disabled={!savedAddresses.ready}
+            onPress={() => {
+              const address = savedAddresses.addresses[kind]
+              if (address) onCenter(address.coordinate)
+              else {
+                setAddressError(null)
+                setAddressQuery('')
+                setEditing(kind)
+              }
+            }}
+          />
+        ))}
+      </View>
+      <View style={ui.row}>
+        <ParkingTile
+          title="Your car"
+          subtitle={
+            local.state.parked ? 'Show saved location' : 'Save where you parked'
+          }
+          icon="car-white"
+          disabled={disabled || locating}
+          onPress={
+            local.state.parked
+              ? () => {
+                  const parked = local.state.parked
+                  if (parked) onCenter(parked.coordinate)
+                }
+              : onSaveParked
+          }
+        />
+        <ParkingTile
+          title="Add a place"
+          subtitle="Find a spot to save"
+          icon="plus-small"
+          accent
+          onPress={onAddPlace}
+        />
+      </View>
+      {savedAddresses.error ? (
+        <Text accessibilityRole="alert" style={[ui.small, ui.error]}>
+          {savedAddresses.error}
+        </Text>
+      ) : null}
+      {savedAddresses.ready &&
+      (savedAddresses.addresses.home || savedAddresses.addresses.work) ? (
+        <View style={ui.row}>
+          {(['home', 'work'] as const).map((kind) =>
+            savedAddresses.addresses[kind] ? (
+              <Button
+                key={kind}
+                secondary
+                onPress={() => {
+                  setAddressError(null)
+                  setAddressQuery('')
+                  setEditing(kind)
+                }}
+              >
+                Edit {kind}
+              </Button>
+            ) : null,
+          )}
+        </View>
+      ) : null}
+      {editing ? (
+        <ModalSheet
+          title={`Set ${editing} address`}
+          onClose={() => setEditing(null)}
+        >
+          <View style={{ padding: 16, flexShrink: 1 }}>
+            <DestinationSearch
+              layout="sheet"
+              query={addressQuery}
+              onQuery={setAddressQuery}
+              center={local.state.parked?.coordinate ?? PILOT_CENTER}
+              active={!addressBusy}
+              onActive={(active) => {
+                if (!active && !addressBusy) setEditing(null)
+              }}
+              onSaved={() => setEditing(null)}
+              onLocate={() => {
+                if (addressBusy) return
+                setAddressBusy(true)
+                setAddressError(null)
+                void onLocateAddress()
+                  .then(async (coordinate) => {
+                    if (!coordinate) {
+                      setAddressError(
+                        'Your location couldn’t be found. Search for an address or enable location access.',
+                      )
+                      return
+                    }
+                    const ok = await savedAddresses.save(editing, {
+                      id: `pinned-${editing}`,
+                      name: 'Current location',
+                      address: 'Pinned location',
+                      coordinate,
+                    })
+                    if (ok) setEditing(null)
+                  })
+                  .catch(() =>
+                    setAddressError(
+                      'Your location couldn’t be found. Try searching for an address.',
+                    ),
+                  )
+                  .finally(() => setAddressBusy(false))
+              }}
+              onSelect={(destination) => {
+                setAddressBusy(true)
+                void savedAddresses
+                  .save(editing, destination)
+                  .then((ok) => {
+                    if (ok) setEditing(null)
+                  })
+                  .finally(() => setAddressBusy(false))
+              }}
+            />
+            {addressBusy ? <Text style={ui.small}>Saving address…</Text> : null}
+            {addressError ? (
+              <Text accessibilityRole="alert" style={[ui.small, ui.error]}>
+                {addressError}
+              </Text>
+            ) : null}
+            {savedAddresses.error ? (
+              <Text accessibilityRole="alert" style={[ui.small, ui.error]}>
+                {savedAddresses.error}
+              </Text>
+            ) : null}
+          </View>
+        </ModalSheet>
+      ) : null}
       {toast ? (
         <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
           <UndoToast message={toast.message} onUndo={toast.undo} />
         </View>
       ) : null}
-      <ScrollView contentContainerStyle={styles.content}>
+      <View style={styles.content}>
         <View style={[ui.row, { flexWrap: 'wrap' }]}>
           <Choice
             selected={tab === 'favorites'}
@@ -121,8 +292,24 @@ export function SavedPlaces({
             selected={tab === 'recents'}
             onPress={() => setTab('recents')}
           >
-            Recently viewed
+            Recent
           </Choice>
+          {local.state[tab].length > 0 ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ selected: managing }}
+              onPress={() => setManaging(!managing)}
+              style={{
+                minHeight: 44,
+                justifyContent: 'center',
+                marginLeft: 'auto',
+              }}
+            >
+              <Text style={[ui.small, ui.link]}>
+                {managing ? 'Done' : 'Manage'}
+              </Text>
+            </Pressable>
+          ) : null}
         </View>
         {local.state[tab].map(row)}
         {local.status === 'ready' && local.state[tab].length === 0 ? (
@@ -152,7 +339,7 @@ export function SavedPlaces({
             <Button onPress={onDirections}>Directions back</Button>
             <Text style={ui.small}>
               Directions share your start and saved location with the routing
-              provider. Driving route only; this is not a walking route.
+              provider. Opens walking directions in Google Maps.
             </Text>
             <Button
               secondary
@@ -205,30 +392,39 @@ export function SavedPlaces({
             </Button>
           </>
         ) : null}
-      </ScrollView>
-    </ModalSheet>
+      </View>
+    </ParkingPage>
   )
 }
 
 const styles = StyleSheet.create({
-  content: { paddingHorizontal: 24, paddingBottom: 24, gap: 16 },
+  content: { paddingBottom: 24, gap: 12 },
   savedRow: {
-    paddingVertical: 8,
+    padding: 12,
+    borderRadius: 20,
+    backgroundColor: colors.soft,
     gap: 8,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.line,
+  },
+  badge: {
+    width: 56,
+    height: 56,
+    borderRadius: 14,
+    backgroundColor: colors.selected,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   savedAction: {
     flex: 1,
-    minHeight: 64,
+    minHeight: 56,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    paddingVertical: 12,
+    paddingVertical: 0,
     borderRadius: 12,
   },
   remove: {
-    minHeight: 48,
+    minHeight: 44,
+    alignSelf: 'flex-end',
     justifyContent: 'center',
     paddingHorizontal: 8,
     borderRadius: 24,

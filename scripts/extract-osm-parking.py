@@ -41,7 +41,7 @@ def extract(root, observed):
             continue
         kind, side, geometry = None, 'unknown', None
         if tags.get('amenity') == 'parking' and item.tag in ('node', 'way'):
-            if tags.get('parking') in ('street_side', 'lane') or tags.get('access') in ('private', 'no') or tags.get('building') == 'construction':
+            if tags.get('parking') in ('street_side', 'lane') or tags.get('building') == 'construction':
                 continue
             if point is None and coords:
                 # Facility polygons are represented by a point; this is NOT a mapped entrance.
@@ -76,6 +76,15 @@ def extract(root, observed):
         fees = tags.get('charge') or ('Fee applies; amount unavailable' if tags.get('fee') == 'yes' else 'OSM records no fee; check posted signs' if tags.get('fee') == 'no' else None)
         address = ', '.join(tags[k] for k in ('addr:housenumber', 'addr:street', 'addr:city') if tags.get(k)) or None
         records.append({'id': 'osm:' + item.tag + '/' + item.get('id'), 'name': tags.get('name') or (tags.get('addr:street') + ' parking' if tags.get('addr:street') else 'Unnamed parking · OpenStreetMap') if kind != 'street' else tags.get('name', 'Unnamed street'), 'kind': kind, 'geometry': geometry, 'address': address, 'side': side, 'fees': fees, 'hours': tags.get('opening_hours'), 'regulations': regulations, 'sourceKind': 'osm', 'sourceLabel': '© OpenStreetMap contributors · pilot snapshot', 'sourceUrl': url, 'license': 'Open Database License (ODbL) 1.0', 'sourceUpdatedAt': observed, 'verification': 'unverified', 'verifiedAt': None})
+        record = records[-1]
+        keep = {'name', 'operator', 'access', 'fee', 'charge', 'capacity', 'capacity:disabled', 'capacity:charging', 'opening_hours', 'maxstay', 'maxheight', 'parking', 'covered', 'lit', 'surface', 'supervised', 'motorcar', 'motorcycle', 'phone', 'website', 'wheelchair', 'image', 'wikimedia_commons', 'mapillary', 'check_date'}
+        record['osmTags'] = {k: v for k, v in tags.items() if k in keep or k.startswith(('payment:', 'addr:'))}
+        if item.get('timestamp'):
+            record['osmEditedAt'] = item.get('timestamp')
+        # Membership is explicit: entrance nodes referenced by the facility way.
+        # Never associate unrelated nearby entrances by distance alone.
+        members = {n.get('ref') for n in item.findall('nd')}
+        record['entrances'] = [nodes[n.get('id')] for n in root.findall('node') if n.get('id') in members and any(t.get('k') == 'amenity' and t.get('v') == 'parking_entrance' for t in n.findall('tag'))]
     return sorted(records, key=lambda r: r['id'])
 
 if __name__ == '__main__':

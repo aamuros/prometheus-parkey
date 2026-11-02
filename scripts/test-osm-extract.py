@@ -19,11 +19,26 @@ class ImportTests(unittest.TestCase):
         <node id="8" lon="121.03" lat="14.56"><tag k="amenity" v="parking"/><tag k="access" v="private"/></node>
         </osm>''')
         records = extractor.extract(root, '2026-10-28T00:00:00Z')
-        self.assertEqual([r['id'] for r in records], ['osm:way/3'])
-        self.assertEqual(records[0]['side'], 'both')
+        self.assertEqual([r['id'] for r in records], ['osm:node/8', 'osm:way/3'])
+        self.assertEqual(records[1]['side'], 'both')
         self.assertIsNone(records[0]['fees'])
         self.assertIsNone(records[0]['hours'])
         self.assertEqual(records[0]['verification'], 'unverified')
+
+    def test_source_tags_timestamp_and_explicit_entrance_membership(self):
+        root = ET.fromstring('''<osm>
+        <node id="1" lon="121.03" lat="14.56"><tag k="amenity" v="parking_entrance"/></node>
+        <node id="2" lon="121.031" lat="14.561"/>
+        <node id="9" lon="121.0301" lat="14.56"><tag k="amenity" v="parking_entrance"/></node>
+        <way id="3" timestamp="2020-01-01T00:00:00Z"><nd ref="1"/><nd ref="2"/><nd ref="1"/>
+        <tag k="amenity" v="parking"/><tag k="operator" v="Real operator"/><tag k="capacity" v="120"/>
+        <tag k="payment:cash" v="yes"/><tag k="addr:postcode" v="1200"/><tag k="image" v="https://example.org/photo.jpg"/>
+        </way></osm>''')
+        record = extractor.extract(root, '2026-11-02T00:00:00Z')[0]
+        self.assertEqual(record['osmEditedAt'], '2020-01-01T00:00:00Z')
+        self.assertEqual(record['osmTags']['payment:cash'], 'yes')
+        self.assertEqual(record['osmTags']['addr:postcode'], '1200')
+        self.assertEqual(record['entrances'], [[121.03, 14.56]])
 
 if __name__ == '__main__':
     unittest.main()

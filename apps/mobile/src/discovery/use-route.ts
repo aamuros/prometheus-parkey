@@ -26,7 +26,7 @@ export function useRoute() {
 
   const load = useCallback(
     async (
-      destination: Coordinate,
+      destination: Coordinate | ((origin: Coordinate) => Coordinate),
       locate: () => Promise<Coordinate | null>,
       rerouting = false,
     ) => {
@@ -74,7 +74,7 @@ export function useRoute() {
         }))
         const route = await fetchDrivingRoute(
           from,
-          destination,
+          typeof destination === 'function' ? destination(from) : destination,
           request.signal,
           {
             ...(Platform.OS === 'web'

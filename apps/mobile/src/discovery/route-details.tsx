@@ -14,6 +14,7 @@ import type { Coordinate } from '@parkey/shared-types'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Svg, { Path } from 'react-native-svg'
 
+import { FigmaAsset } from './figma-assets'
 import { arrivalTime } from './drive-math'
 import { directionsUrl } from './model'
 import { routeDistance, routeDuration } from './routing'
@@ -27,12 +28,12 @@ export function NavigationBanner({
   step,
   distance,
   rerouting,
-  onClose,
+  then,
 }: {
+  then?: DrivingStep | undefined
   step: DrivingStep | undefined
   distance: number
   rerouting: boolean
-  onClose: () => void
 }) {
   const path =
     step?.maneuver.includes('roundabout') || step?.maneuver === 'rotary'
@@ -48,27 +49,45 @@ export function NavigationBanner({
               : 'M12 22V3m-7 7 7-7 7 7'
   return (
     <View testID="navigation-banner" style={[styles.banner, ui.shadow]}>
-      <Svg
-        width={40}
-        height={40}
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke={colors.brandDeep}
-        strokeWidth={2.5}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <Path d={path} />
-      </Svg>
-      <View style={ui.flex} accessibilityLiveRegion="polite">
-        <Text style={styles.maneuver}>
-          {rerouting ? 'Rerouting…' : routeDistance(distance)}
-        </Text>
-        <Text style={styles.maneuver}>
-          {step?.instruction ?? 'Follow the route'}
-        </Text>
+      <View style={ui.row}>
+        <View style={styles.turnBadge}>
+          {step?.modifier.includes('right') ? (
+            <FigmaAsset name="turn-right" size={34} />
+          ) : (
+            <Svg
+              width={34}
+              height={34}
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke={colors.surface}
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <Path d={path} />
+            </Svg>
+          )}
+        </View>
+        <View style={ui.flex} accessibilityLiveRegion="polite">
+          <Text style={styles.maneuverDistance}>
+            {rerouting ? 'Rerouting…' : routeDistance(distance)}
+          </Text>
+          <Text style={styles.maneuver}>
+            {step?.instruction ?? 'Follow the route'}
+          </Text>
+        </View>
       </View>
-      <IconButton icon="close" label="End navigation" onPress={onClose} />
+      {then ? (
+        <View style={styles.then}>
+          <Text style={styles.thenLabel}>Then</Text>
+          {then.modifier.includes('left') ? (
+            <FigmaAsset name="then-left" size={16} />
+          ) : null}
+          <Text style={[ui.small, { color: colors.surface, flex: 1 }]}>
+            {then.instruction}
+          </Text>
+        </View>
+      ) : null}
     </View>
   )
 }
@@ -133,6 +152,7 @@ export function RouteDetails({
       onLayout={(event) => onHeightChange(event.nativeEvent.layout.height)}
       style={[
         styles.sheet,
+        phase === 'navigating' && styles.tripBar,
         ui.shadow,
         {
           maxHeight: height * 0.75,
@@ -146,30 +166,32 @@ export function RouteDetails({
             <View style={ui.flex}>
               {duration !== undefined && distance !== undefined ? (
                 <>
-                  <Text style={ui.title}>
-                    {routeDuration(duration)} · {routeDistance(distance)}
+                  <Text style={ui.sectionTitle}>{routeDuration(duration)}</Text>
+                  <Text style={ui.small}>
+                    {routeDistance(distance)} · Arrive {arrivalTime(duration)}
                   </Text>
-                  <Text style={ui.body}>Arrive {arrivalTime(duration)}</Text>
                 </>
               ) : (
                 <Text style={ui.body}>Calculating route…</Text>
               )}
             </View>
-            <Button secondary onPress={onClose}>
-              End
-            </Button>
+            <Pressable
+              accessibilityRole="button"
+              onPress={onClose}
+              style={styles.end}
+            >
+              <Text style={styles.endText}>End</Text>
+            </Pressable>
           </View>
           {message || state.error ? (
             <Text accessibilityRole="alert" style={[ui.small, ui.error]}>
               {message ?? state.error}
             </Text>
           ) : null}
-          <Text style={ui.small}>
-            Tracking only while Parkey is open · No voice guidance
-          </Text>
         </>
       ) : phase === 'arrived' ? (
         <>
+          <View style={styles.handle} />
           <View style={ui.row}>
             <Text accessibilityRole="header" style={[ui.title, ui.flex]}>
               You’ve arrived
@@ -180,8 +202,13 @@ export function RouteDetails({
               onPress={onClose}
             />
           </View>
-          <Text style={ui.sectionTitle}>{destinationName}</Text>
-          <Text style={ui.small}>Confirm the entrance and posted signs</Text>
+          <Text style={ui.small}>{destinationName}</Text>
+          <View style={styles.warning}>
+            <FigmaAsset name="warning" size={18} />
+            <Text style={[ui.small, { color: colors.amber, flex: 1 }]}>
+              Confirm the entrance and posted signs.
+            </Text>
+          </View>
           <Button disabled={saving} onPress={onPark}>
             {saving ? 'Saving…' : 'I parked here'}
           </Button>
@@ -203,7 +230,7 @@ export function RouteDetails({
       ) : (
         <ScrollView
           style={{ flexShrink: 1 }}
-          contentContainerStyle={{ gap: 10 }}
+          contentContainerStyle={{ gap: 16 }}
         >
           <View {...gesture.panHandlers}>
             <View style={styles.handle} />
@@ -223,13 +250,25 @@ export function RouteDetails({
           </View>
           {state.route ? (
             <>
-              <Text accessibilityLiveRegion="polite" style={ui.title}>
-                {routeDuration(state.route.duration)} ·{' '}
-                {routeDistance(state.route.distance)}
-              </Text>
-              <Text style={ui.body}>
-                Arrive {arrivalTime(state.route.duration)}
-              </Text>
+              <View
+                style={[
+                  ui.row,
+                  { justifyContent: 'space-between', alignItems: 'flex-end' },
+                ]}
+                accessibilityLiveRegion="polite"
+              >
+                <Text style={styles.eta}>
+                  {routeDuration(state.route.duration)}
+                </Text>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={ui.sectionTitle}>
+                    {routeDistance(state.route.distance)}
+                  </Text>
+                  <Text style={ui.small}>
+                    Arrive {arrivalTime(state.route.duration)}
+                  </Text>
+                </View>
+              </View>
               {fromMapCenter ? (
                 <Text style={ui.small}>
                   Preview from map center · Start uses your live location
@@ -247,13 +286,34 @@ export function RouteDetails({
               {message ?? state.error}
             </Text>
           ) : null}
-          <Text style={ui.small}>
-            Use your location for guidance while Parkey is open.
-          </Text>
-          <Button disabled={starting || !state.route} onPress={onStart}>
-            {starting ? 'Finding your location…' : 'Start'}
-          </Button>
-          {onDetails ? (
+          <View style={ui.row}>
+            <View style={ui.flex}>
+              <Button
+                icon="arrow"
+                disabled={starting || !state.route}
+                onPress={onStart}
+              >
+                {starting ? 'Locating…' : 'Start'}
+              </Button>
+            </View>
+            {state.route ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Steps"
+                accessibilityState={{ expanded }}
+                onPress={() => setExpanded(!expanded)}
+                style={styles.stepsToggle}
+              >
+                <Text style={[ui.heading, ui.link]}>Steps</Text>
+              </Pressable>
+            ) : null}
+          </View>
+          {expanded ? (
+            <Text style={ui.small}>
+              Live guidance while Parkey is open · No voice guidance
+            </Text>
+          ) : null}
+          {expanded && onDetails ? (
             <Button secondary onPress={onDetails}>
               Parking details
             </Button>
@@ -285,17 +345,6 @@ export function RouteDetails({
           ) : null}
           {state.route ? (
             <>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Steps"
-                accessibilityState={{ expanded }}
-                onPress={() => setExpanded(!expanded)}
-                style={styles.stepsToggle}
-              >
-                <Text style={[ui.heading, ui.link]}>
-                  Steps {expanded ? '⌄' : '⌃'}
-                </Text>
-              </Pressable>
               {expanded ? (
                 <ScrollView
                   style={{ flexShrink: 1 }}
@@ -334,11 +383,11 @@ const styles = StyleSheet.create({
     right: 0,
     maxWidth: 620,
     marginHorizontal: 'auto',
-    borderTopLeftRadius: 32,
-    borderTopRightRadius: 32,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
     backgroundColor: colors.surface,
-    padding: 24,
-    gap: 10,
+    padding: 16,
+    gap: 16,
   },
   handle: {
     width: 40,
@@ -356,23 +405,83 @@ const styles = StyleSheet.create({
     color: colors.action,
   },
   stepsToggle: {
-    minHeight: 44,
+    minHeight: 56,
+    borderRadius: 28,
+    backgroundColor: colors.selected,
+    paddingHorizontal: 24,
     alignItems: 'center',
     justifyContent: 'center',
   },
   banner: {
-    backgroundColor: colors.surface,
-    borderRadius: 24,
+    backgroundColor: colors.dark,
+    borderRadius: 28,
     padding: 16,
+    gap: 12,
+  },
+  tripBar: {
+    left: 16,
+    right: 16,
+    bottom: 24,
+    borderRadius: 28,
+    paddingHorizontal: 20,
+  },
+  turnBadge: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: colors.brand,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  maneuverDistance: {
+    fontFamily: fonts.black,
+    fontSize: 40,
+    lineHeight: 46,
+    color: colors.surface,
+  },
+  then: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 8,
+    backgroundColor: colors.darkRaised,
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  thenLabel: {
+    fontFamily: fonts.semibold,
+    fontSize: 12,
+    color: colors.onDarkMuted,
+  },
+  end: {
+    backgroundColor: colors.dangerSurface,
+    borderRadius: 999,
+    paddingHorizontal: 24,
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  endText: { fontFamily: fonts.bold, fontSize: 17, color: colors.error },
+  warning: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.warningSurface,
+    borderRadius: 16,
+    padding: 12,
+  },
+  eta: {
+    fontFamily: fonts.black,
+    fontSize: 40,
+    lineHeight: 48,
+    color: colors.ink,
+    flexShrink: 1,
   },
   maneuver: {
     fontFamily: fonts.semibold,
-    fontSize: 22,
-    lineHeight: 29,
-    color: colors.brandDeep,
+    fontSize: 18,
+    lineHeight: 24,
+    color: colors.onDarkMuted,
     flexShrink: 1,
   },
 })

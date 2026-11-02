@@ -61,6 +61,10 @@ export type DiscoveryParking = {
   sourceLabel: string
   sourceUrl: string | null
   license: string
+  /** Raw OSM facts retained at import, never inferred client-side. */
+  osmTags?: Record<string, string>
+  osmEditedAt?: string | null
+  entrances?: Coordinate[]
   sourceUpdatedAt: string | null
   verification: 'unverified' | 'verified'
   verifiedAt: string | null
