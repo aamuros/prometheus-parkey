@@ -3,12 +3,24 @@ import test from 'node:test'
 
 import {
   initialSheetState,
+  createSheetDragGuard,
   discoveryCameraPadding,
   sheetHeights,
   sheetReducer,
   snapSheet,
 } from './sheet-state.ts'
 import { sampleParking } from './sample-data.ts'
+
+test('drag-generated clicks cannot undo a sheet snap, while taps and keyboard activation still work', () => {
+  const guard = createSheetDragGuard()
+  guard.reset()
+  assert.equal(guard.allowPress(), true)
+  guard.start()
+  assert.equal(guard.allowPress(), false)
+  assert.equal(guard.allowPress(true), true)
+  guard.reset()
+  assert.equal(guard.allowPress(), true)
+})
 
 test('selecting parking opens a preview and dismissal restores the browsing position', () => {
   const browsing = sheetReducer(initialSheetState, {
@@ -67,8 +79,8 @@ test('snap heights fit safe areas on small screens, portrait, and landscape', ()
       assert.ok(h.expanded <= height - top)
     }
   }
-  // The home sheet has room for its header and a complete 80px parking card.
-  assert.ok(sheetHeights(844, 59, 34, false, 1, 96).compact >= 96 + 80 + 34)
+  // The collapsed surface keeps only its handle and search bar above the safe area.
+  assert.equal(sheetHeights(844, 59, 34, false, 1, 112).compact, 146)
   const largeText = sheetHeights(568, 20, 0, false, 2, 156)
   assert.ok(largeText.compact > sheetHeights(568, 20, 0, false).compact)
   assert.ok(largeText.medium <= largeText.expanded)
@@ -84,23 +96,15 @@ test('drag snapping follows distance and swipe direction, retaining selected pre
   assert.equal(snapSheet(heights, -100, 1, true), 'medium')
 })
 
-test('measured compact header leaves a tappable first-result peek on a 320 by 568 phone, including large fonts', () => {
-  for (const [fontScale, headerHeight, attributionHeight] of [
-    [1, 96, 48],
-    [2, 156, 56],
+test('the collapsed sheet fits search and large text without reserving a results card', () => {
+  for (const [fontScale, headerHeight] of [
+    [1, 112],
+    [2, 156],
   ]) {
-    const heights = sheetHeights(
-      568 - attributionHeight,
-      20,
-      0,
-      false,
-      fontScale,
-      headerHeight,
-    )
-    assert.ok(heights.compact - headerHeight - 12 >= 48)
+    const heights = sheetHeights(568, 20, 0, false, fontScale, headerHeight)
+    assert.ok(heights.compact >= headerHeight + 16)
     assert.ok(heights.compact < heights.medium)
-    assert.ok(heights.compact <= (568 - attributionHeight - 20) * 0.6)
-    assert.ok(heights.compact + attributionHeight + 168 <= 568 - 64)
+    assert.ok(heights.compact <= (568 - 20) * 0.6)
   }
 })
 
@@ -132,41 +136,39 @@ test('camera padding always retains a viewport on short screens and rejects nega
   assert.deepEqual(discoveryCameraPadding(568, -10, -30), { top: 0, bottom: 0 })
 })
 
-test('browse sheets leave the tab bar and map visible, including on short phones', () => {
+test('browse sheets use the full screen above the safe area without a tab bar', () => {
   for (const [height, top, bottom] of [
     [844, 47, 28],
     [568, 20, 0],
     [320, 0, 21],
   ]) {
-    const tabHeight = 58 + Math.max(bottom, 16)
-    const heights = sheetHeights(height - tabHeight, top, bottom, false, 1, 96)
+    const heights = sheetHeights(height, top, bottom, false, 1, 112)
     assert.ok(heights.compact <= heights.medium)
-    assert.ok(heights.expanded + tabHeight <= height - top)
-    assert.ok(heights.compact + tabHeight < height - top)
+    assert.ok(heights.expanded <= height - top)
+    assert.ok(heights.expanded >= (height - top) * 0.9)
+    assert.ok(heights.compact < height - top)
   }
 })
 
-test('browsing sheets leave measured search and filters unobstructed in landscape', () => {
+test('browsing sheets keep floating map controls clear in landscape', () => {
   const screenHeight = 375
-  const tabHeight = 74
-  const overlayHeight = 183
-  const heights = sheetHeights(
-    screenHeight - tabHeight,
-    0,
-    0,
-    false,
-    1,
-    96,
-    overlayHeight,
-  )
+  const overlayHeight = 64
+  const heights = sheetHeights(screenHeight, 0, 0, false, 1, 96, overlayHeight)
   for (const position of ['compact', 'medium']) {
-    assert.ok(
-      screenHeight - tabHeight - heights[position] >= overlayHeight + 12,
-    )
+    assert.ok(screenHeight - heights[position] >= overlayHeight + 12)
   }
   assert.ok(heights.expanded > heights.medium)
   assert.deepEqual(
     sheetHeights(844, 0, 0, true, 1, 96, 183),
     sheetHeights(844, 0, 0, true, 1, 96),
   )
+})
+
+test('search sheet snaps stay ordered in the space above a phone keyboard', () => {
+  const heights = sheetHeights(844 - 346, 59, 0, false, 1, 112)
+  assert.ok(heights.compact < heights.medium)
+  assert.ok(heights.medium < heights.expanded)
+  assert.ok(heights.expanded <= 844 - 346 - 59)
+  assert.equal(snapSheet(heights, heights.compact, 0, false), 'compact')
+  assert.equal(snapSheet(heights, heights.expanded, 0, false), 'expanded')
 })

@@ -3,6 +3,7 @@ import { useRef, useState } from 'react'
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native'
 
 import { createRoutingConsent } from './routing-consent'
+import { FigmaAsset } from './figma-assets'
 import { Button, colors, ui } from './ui'
 
 const consent = createRoutingConsent(AsyncStorage)
@@ -60,9 +61,18 @@ export function useDirectionsConsent(
             accessibilityLabel="Directions privacy"
             style={styles.dialog}
           >
+            <View style={styles.badge}>
+              <FigmaAsset name="shield-teal" size={28} />
+            </View>
+            <Text accessibilityRole="header" style={ui.sectionTitle}>
+              One quick thing before you go
+            </Text>
             <Text style={ui.body}>
               Directions use an external routing service, which receives your
               start and destination.
+            </Text>
+            <Text style={ui.small}>
+              Not sent through Parkey’s servers. We ask once.
             </Text>
             {error ? (
               <Text accessibilityRole="alert" style={[ui.small, ui.error]}>
@@ -97,10 +107,18 @@ const styles = StyleSheet.create({
   dialog: {
     alignSelf: 'center',
     width: '100%',
-    maxWidth: 400,
+    maxWidth: 358,
     padding: 24,
-    gap: 20,
-    borderRadius: 24,
+    gap: 16,
+    borderRadius: 28,
     backgroundColor: colors.surface,
+  },
+  badge: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.positiveSurface,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 })

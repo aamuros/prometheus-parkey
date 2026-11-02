@@ -1,25 +1,49 @@
-import { useEffect, useState } from 'react'
+import { useSyncExternalStore } from 'react'
 import { AccessibilityInfo } from 'react-native'
 
-export function useReducedMotion() {
-  const [reduced, setReduced] = useState(true)
-  useEffect(() => {
+// Share one preference subscription across sheets and interactive controls.
+let reduced = true
+let unsubscribe: (() => void) | undefined
+const listeners = new Set<() => void>()
+
+function update(value: boolean) {
+  reduced = value
+  for (const listener of listeners) listener()
+}
+
+function subscribe(listener: () => void) {
+  listeners.add(listener)
+  if (listeners.size === 1) {
     let active = true
     void AccessibilityInfo.isReduceMotionEnabled()
       .then((value) => {
-        if (active) setReduced(value)
+        if (active) update(value)
       })
       .catch(() => {
-        /* Keep motion off when the preference cannot be read. */
+        if (active) update(true)
       })
-    const listener = AccessibilityInfo.addEventListener(
+    const subscription = AccessibilityInfo.addEventListener(
       'reduceMotionChanged',
-      setReduced,
+      update,
     )
-    return () => {
+    unsubscribe = () => {
       active = false
-      listener.remove()
+      subscription.remove()
     }
-  }, [])
-  return reduced
+  }
+  return () => {
+    listeners.delete(listener)
+    if (listeners.size === 0) {
+      unsubscribe?.()
+      unsubscribe = undefined
+    }
+  }
+}
+
+export function useReducedMotion() {
+  return useSyncExternalStore(
+    subscribe,
+    () => reduced,
+    () => true,
+  )
 }

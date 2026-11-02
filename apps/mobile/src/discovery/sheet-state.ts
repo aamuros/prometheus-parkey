@@ -1,6 +1,21 @@
 import type { DiscoveryParking } from '@parkey/shared-types'
 
 export type SheetPosition = 'compact' | 'medium' | 'expanded'
+
+/** A browser click following a drag must not undo its snap or dismiss a panel. */
+export function createSheetDragGuard() {
+  let dragged = false
+  return {
+    reset: () => {
+      dragged = false
+    },
+    start: () => {
+      dragged = true
+    },
+    allowPress: (keyboard = false) => keyboard || !dragged,
+  }
+}
+
 export type DiscoverySheetState = {
   parking: DiscoveryParking | null
   position: SheetPosition
@@ -56,22 +71,21 @@ export function sheetHeights(
         usable * 0.6,
       )
     : Math.min(
-        Math.max(210, headerHeight + Math.max(80, 23 * fontScale + 20)) +
-          Math.max(bottom, 12),
+        Math.max(112 + Math.max(0, fontScale - 1) * 24, headerHeight) +
+          Math.max(bottom, 16),
         usable * 0.6,
       )
-  const expanded = Math.max(compact, usable * 0.8)
+  const expanded = Math.max(compact, usable * (selected ? 0.8 : 0.92))
   const medium = Math.min(
     expanded,
     Math.max(
-      Math.max(compact + 24, selected ? 300 : 240) +
+      Math.max(compact + (selected ? 24 : 120), selected ? 300 : 240) +
         bottom +
         Math.max(0, fontScale - 1) * 80,
       usable * 0.45,
     ),
   )
-  // Browsing controls must remain usable when the device rotates to landscape.
-  // The full sheet deliberately replaces those controls to expose the results.
+  // Keep the floating map controls clear of the lower browsing positions.
   const browseLimit = Math.max(0, height - overlayHeight - 12)
   return {
     compact: selected ? compact : Math.min(compact, browseLimit),

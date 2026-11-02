@@ -3,7 +3,6 @@ import type { ComponentRef } from 'react'
 import {
   Keyboard,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -17,8 +16,10 @@ import { config } from './config'
 import { searchDestinations } from './data'
 import type { Destination } from './data'
 import { FigmaAsset } from './figma-assets'
+import { MotionPressable } from './motion'
 import { fonts } from './typography'
-import { Button, colors, Icon, IconButton, UndoToast, ui } from './ui'
+import { StateCard } from './state-card'
+import { colors, IconButton, UndoToast, ui } from './ui'
 import { useSearchHistory } from './use-search-history'
 
 export function DestinationSearch({
@@ -31,6 +32,10 @@ export function DestinationSearch({
   onActive,
   onSaved,
   layout = 'overlay',
+  fillSheet = false,
+  placeholder = layout === 'sheet'
+    ? 'Search for an address'
+    : 'Where do you need parking?',
 }: {
   query: string
   onQuery: (query: string) => void
@@ -41,6 +46,8 @@ export function DestinationSearch({
   onActive: (active: boolean) => void
   onSaved: () => void
   layout?: 'overlay' | 'sheet'
+  fillSheet?: boolean
+  placeholder?: string
 }) {
   const { height } = useWindowDimensions()
   const compact = height < 700
@@ -71,6 +78,15 @@ export function DestinationSearch({
     request.current = null
   }
 
+  function clearSearch() {
+    cancel()
+    onQuery('')
+    setResults([])
+    setStatus('idle')
+    input.current?.focus()
+    onActive(true)
+  }
+
   function close() {
     cancel()
     onActive(false)
@@ -87,7 +103,13 @@ export function DestinationSearch({
     if (active && event.key === 'Escape') close()
   })
   useEffect(() => {
-    if (!active) deactivate()
+    if (!active) {
+      deactivate()
+      return
+    }
+    // The map page becomes interactive after Saved places closes.
+    const frame = requestAnimationFrame(() => input.current?.focus())
+    return () => cancelAnimationFrame(frame)
   }, [active])
   useEffect(() => {
     if (Platform.OS !== 'web') return
@@ -179,13 +201,20 @@ export function DestinationSearch({
       }
       style={[
         styles.container,
-        compact && styles.compactContainer,
+        compact && layout === 'overlay' && styles.compactContainer,
         layout === 'sheet'
-          ? { flexShrink: 1, maxHeight: (visibleBottom ?? height) * 0.55 }
+          ? [
+              styles.sheetContainer,
+              fillSheet
+                ? active && { flex: 1 }
+                : { maxHeight: (visibleBottom ?? height) * 0.55 },
+            ]
           : {
               maxHeight: Math.max(0, (visibleBottom ?? height) - cardTop - 64),
             },
-        ui.shadow,
+        layout === 'overlay' && ui.shadow,
+        !active &&
+          layout === 'sheet' && { padding: 0, backgroundColor: 'transparent' },
       ]}
     >
       {layout === 'overlay' ? (
@@ -193,32 +222,37 @@ export function DestinationSearch({
           <Text style={[styles.brand, compact && styles.compactBrand]}>
             parkey
           </Text>
-          <Pressable
+          <MotionPressable
             accessibilityRole="button"
             onPress={onSaved}
             accessibilityLabel="Open saved places"
             style={({ pressed }) => [styles.savedAction, pressed && ui.pressed]}
           >
             <Text style={ui.small}>Makati</Text>
-          </Pressable>
+          </MotionPressable>
         </View>
       ) : null}
-      <View style={[styles.bar, focused && styles.focusedBar]}>
-        <FigmaAsset name="search" size={22} />
+      <View
+        style={[
+          styles.bar,
+          layout === 'sheet' && styles.sheetBar,
+          focused && styles.focusedBar,
+        ]}
+      >
+        {active && fillSheet ? (
+          <IconButton
+            icon="back"
+            label="Close destination search"
+            onPress={close}
+          />
+        ) : null}
+        <FigmaAsset name="search-muted" size={24} />
         <TextInput
           ref={input}
           testID="destination-query"
-          accessibilityLabel={
-            layout === 'sheet'
-              ? 'Search for an address'
-              : 'Where do you need parking?'
-          }
-          placeholder={
-            layout === 'sheet'
-              ? 'Search for an address'
-              : 'Where do you need parking?'
-          }
-          placeholderTextColor={colors.disabled}
+          accessibilityLabel={placeholder}
+          placeholder={placeholder}
+          placeholderTextColor={colors.muted}
           selectionColor={colors.action}
           maxLength={180}
           value={query}
@@ -242,20 +276,13 @@ export function DestinationSearch({
           onSubmitEditing={() => void search()}
           submitBehavior="submit"
           returnKeyType="search"
-          style={styles.input}
+          style={[styles.input, layout === 'sheet' && styles.sheetInput]}
         />
         {query ? (
           <IconButton
             icon="close"
             label="Clear destination search"
-            onPress={() => {
-              cancel()
-              onQuery('')
-              setResults([])
-              setStatus('idle')
-              input.current?.focus()
-              onActive(true)
-            }}
+            onPress={clearSearch}
           />
         ) : null}
       </View>
@@ -264,24 +291,31 @@ export function DestinationSearch({
           testID="destination-results"
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="none"
-          style={styles.results}
+          style={[
+            ui.sheetScroll,
+            styles.results,
+            fillSheet && { flex: 1, maxHeight: undefined },
+          ]}
           contentContainerStyle={styles.resultsContent}
         >
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => {
-              cancel()
-              input.current?.blur()
-              Keyboard.dismiss()
-              onLocate()
-            }}
-            style={({ pressed }) => [styles.result, pressed && ui.pressed]}
-          >
-            <View style={styles.resultIcon}>
-              <Icon name="locate" color={colors.action} size={20} />
-            </View>
-            <Text style={ui.heading}>Current location</Text>
-          </Pressable>
+          {query.trim().length < 3 ? (
+            <MotionPressable
+              accessibilityRole="button"
+              onPress={() => {
+                cancel()
+                input.current?.blur()
+                Keyboard.dismiss()
+                onLocate()
+              }}
+              style={({ pressed }) => [styles.result, pressed && ui.pressed]}
+            >
+              <View style={[styles.resultIcon, styles.locationBadge]}>
+                <FigmaAsset name="locate" size={20} />
+              </View>
+              <Text style={[ui.heading, ui.flex]}>Current location</Text>
+              <FigmaAsset name="chevron-right" size={20} />
+            </MotionPressable>
+          ) : null}
 
           {cleared ? (
             <UndoToast
@@ -292,12 +326,12 @@ export function DestinationSearch({
               }}
             />
           ) : null}
-          {!query.trim() ? (
+          {query.trim().length < 3 ? (
             <>
               {history.recents.length ? (
                 <View style={ui.row}>
                   <Text style={[ui.small, ui.flex]}>Recent searches</Text>
-                  <Pressable
+                  <MotionPressable
                     accessibilityRole="button"
                     accessibilityLabel="Clear recent searches"
                     onPress={() => {
@@ -307,7 +341,7 @@ export function DestinationSearch({
                     style={styles.clearAction}
                   >
                     <Text style={[ui.small, ui.link]}>Clear</Text>
-                  </Pressable>
+                  </MotionPressable>
                 </View>
               ) : null}
               {history.recents.map((destination, index) => (
@@ -339,31 +373,24 @@ export function DestinationSearch({
                 </View>
               ) : null}
               {status === 'error' ? (
-                <View style={{ gap: 8 }}>
-                  <Text
-                    accessibilityRole="alert"
-                    style={[ui.muted, ui.error, styles.message]}
-                  >
-                    Search couldn’t connect.
-                  </Text>
-                  <Button
-                    secondary
-                    onPress={() => {
-                      cancel()
-                      debounce.current = setTimeout(() => void search(), 0)
-                    }}
-                  >
-                    Retry search
-                  </Button>
-                </View>
+                <StateCard
+                  title="Search couldn’t connect"
+                  body="Check your connection and try again."
+                  action="Retry search"
+                  onAction={() => {
+                    cancel()
+                    debounce.current = setTimeout(() => void search(), 0)
+                  }}
+                />
               ) : null}
               {status === 'empty' ? (
-                <Text
-                  accessibilityLiveRegion="polite"
-                  style={[ui.muted, styles.message]}
-                >
-                  No places found for '{query.trim()}'
-                </Text>
+                <StateCard
+                  icon="no-results"
+                  title="No places found"
+                  body="Try a street, landmark or neighbourhood name."
+                  action="Clear search"
+                  onAction={clearSearch}
+                />
               ) : null}
               {results.map((destination, index) => (
                 <DestinationRow
@@ -373,10 +400,10 @@ export function DestinationSearch({
                   onPress={() => select(destination)}
                 />
               ))}
-              {notice ? (
+              {notice || layout === 'sheet' ? (
                 <Text style={[ui.small, styles.message]}>
-                  Search text and map area are sent to Photon. Details in
-                  Privacy / About.
+                  Search text and map area are sent to Photon. Details in You →
+                  Privacy.
                 </Text>
               ) : null}
             </>
@@ -400,18 +427,14 @@ function DestinationRow({
   onPress: () => void
 }) {
   return (
-    <Pressable
+    <MotionPressable
       accessibilityRole="button"
       testID={testID}
       onPress={onPress}
       style={({ pressed }) => [styles.result, pressed && ui.pressed]}
     >
       <View style={styles.resultIcon}>
-        <Icon
-          name={recent ? 'clock' : 'pin'}
-          color={colors.brandDeep}
-          size={20}
-        />
+        <FigmaAsset name={recent ? 'viewed-brand' : 'pin'} size={24} />
       </View>
       <View style={ui.flex}>
         <Text numberOfLines={1} style={styles.resultName}>
@@ -421,21 +444,44 @@ function DestinationRow({
           {destination.address}
         </Text>
       </View>
-      <Icon name="chevronRight" color={colors.muted} size={16} />
-    </Pressable>
+      <FigmaAsset name="chevron-right" size={20} />
+    </MotionPressable>
   )
 }
 
 const styles = StyleSheet.create({
+  searchButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.brand,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
   container: {
-    borderRadius: 28,
+    borderRadius: 32,
     backgroundColor: colors.surface,
     overflow: 'hidden',
     padding: 16,
   },
   compactContainer: { padding: 12 },
+  sheetContainer: {
+    paddingTop: 0,
+    paddingBottom: 12,
+    borderRadius: 0,
+    flexShrink: 1,
+    minHeight: 0,
+  },
+  sheetBar: {
+    minHeight: 52,
+    borderRadius: 999,
+    backgroundColor: colors.soft,
+    borderColor: 'transparent',
+  },
+  sheetInput: { fontSize: 15, lineHeight: 22, paddingVertical: 12 },
   compactHeader: { paddingBottom: 8 },
-  compactBrand: { fontSize: 22, lineHeight: 28 },
+  compactBrand: { fontSize: 26, lineHeight: 30 },
   header: {
     flexShrink: 0,
     flexDirection: 'row',
@@ -453,24 +499,24 @@ const styles = StyleSheet.create({
     paddingLeft: 14,
     paddingRight: 2,
     gap: 12,
-    borderRadius: 20,
+    borderRadius: 28,
     borderWidth: 2,
     borderColor: 'transparent',
     backgroundColor: colors.soft,
   },
   focusedBar: { borderColor: colors.accent },
   brand: {
-    fontFamily: fonts.bold,
-    fontSize: 28,
-    lineHeight: 32,
+    fontFamily: fonts.black,
+    fontSize: 32,
+    lineHeight: 36,
     letterSpacing: -1,
     color: colors.brand,
   },
   savedAction: {
-    minHeight: 28,
+    minHeight: 44,
     backgroundColor: colors.soft,
     justifyContent: 'center',
-    paddingHorizontal: 8,
+    paddingHorizontal: 12,
     borderRadius: 24,
   },
   input: {
@@ -478,8 +524,8 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     paddingVertical: 14,
-    fontSize: 15,
-    lineHeight: 21,
+    fontSize: 17,
+    lineHeight: 24,
     color: colors.ink,
   },
   results: { flexShrink: 1, minHeight: 0, maxHeight: 360, marginTop: 8 },
@@ -500,6 +546,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  locationBadge: { backgroundColor: colors.positiveSurface },
   clearAction: {
     minHeight: 48,
     justifyContent: 'center',

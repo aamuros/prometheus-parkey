@@ -11,24 +11,24 @@ const records = JSON.parse(
 
 test('type filters reflect the real snapshot and do not conflate lots with garages', () => {
   for (const [kind, count] of [
-    ['all', 41],
+    ['all', 43],
     ['street', 6],
-    ['facilities', 35],
-    ['lot', 34],
-    ['garage', 1],
+    ['facilities', 37],
+    ['lot', 35],
+    ['garage', 2],
   ]) {
     const result = partitionParking(records, kind)
     assert.equal(result.matched.length, count)
     assert.equal(result.nonmatched.length, records.length - count)
     assert.equal(result.unknown.length, 0)
-    assert.equal(new Set([...result.matched, ...result.nonmatched]).size, 41)
+    assert.equal(new Set([...result.matched, ...result.nonmatched]).size, 43)
   }
 })
 
-test('actual fee text has two matches and 39 unknowns, with no inferred free or paid values', () => {
+test('actual fee text has two matches and 41 unknowns, with no inferred free or paid values', () => {
   const result = partitionParking(records, 'all', 'applies')
   assert.equal(result.matched.length, 2)
-  assert.equal(result.unknown.length, 39)
+  assert.equal(result.unknown.length, 41)
   assert.equal(result.nonmatched.length, 0)
   assert.ok(
     result.matched.every(
@@ -72,4 +72,28 @@ test('kind mismatch is explicit while unrecognized fee text stays in the unknown
     nonmatched: [],
     unknown: [],
   })
+})
+
+test('free filter requires explicit source evidence and keeps unknown fees separate', () => {
+  const record = records[0]
+  const inputs = [
+    { ...record, id: 'tagged', osmTags: { fee: 'no' }, fees: null },
+    {
+      ...record,
+      id: 'imported',
+      osmTags: {},
+      fees: 'OSM records no fee; check posted signs',
+    },
+    { ...record, id: 'unknown', osmTags: {}, fees: null },
+    { ...record, id: 'conditional', osmTags: {}, fees: 'Free after 5pm' },
+  ]
+  const result = partitionParking(inputs, 'all', 'free')
+  assert.deepEqual(
+    result.matched.map((item) => item.id),
+    ['tagged', 'imported'],
+  )
+  assert.deepEqual(
+    result.unknown.map((item) => item.id),
+    ['unknown', 'conditional'],
+  )
 })

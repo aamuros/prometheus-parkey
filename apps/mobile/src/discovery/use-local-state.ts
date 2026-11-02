@@ -111,6 +111,8 @@ export function useLocalState() {
       update((state) => rememberViewed(state, record)),
     park: (coordinate: Coordinate | null) =>
       update((state) => setParkedSpot(state, coordinate)),
+    restoreParked: (parked: LocalState['parked']) =>
+      update((state) => ({ ...state, parked })),
     restore: (previous: LocalState) => update(() => previous),
     restoreSaved: (
       saved: LocalState['favorites'][number],

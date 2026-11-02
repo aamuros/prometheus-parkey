@@ -1,15 +1,10 @@
 import type { Coordinate, DiscoveryParking } from '@parkey/shared-types'
-import {
-  Linking,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native'
+import { Linking, ScrollView, StyleSheet, Text, View } from 'react-native'
 
 import { FigmaAsset } from './figma-assets'
+import { MotionPressable, MotionView } from './motion'
 import { parkingDetailData } from './parking-detail-data'
+import { ParkingStatus } from './parking-status'
 import { SpotThumbnail } from './spot-photo-view'
 import { fonts } from './typography'
 import { Button, colors, IconButton, ui } from './ui'
@@ -25,10 +20,12 @@ export function ParkingDetails({
   onFavorite,
   favoriteDisabled,
   storageError,
+  onContentHeightChange,
+  onScrollOffsetChange,
 }: {
+  parking: DiscoveryParking
   now: Date
   onAddDetails: () => void
-  parking: DiscoveryParking
   location: Coordinate | null
   expanded: boolean
   onDirections: () => void
@@ -36,260 +33,302 @@ export function ParkingDetails({
   onFavorite: () => void
   favoriteDisabled: boolean
   storageError: string | null
+  onContentHeightChange: (height: number) => void
+  onScrollOffsetChange: (offset: number) => void
 }) {
-  const { title, meta, rows, chips, warning, sparse, updated } =
-    parkingDetailData(parking, location, now)
+  const details = parkingDetailData(parking, location, now)
+  const hours = details.chips.find((chip) => /open|closed|hours/i.test(chip))
+  const tiles = [
+    {
+      label: 'Hours',
+      value: hours === 'Open 24 hours' ? 'Open 24h' : (hours ?? 'Not recorded'),
+      icon: 'clock',
+    },
+    { label: 'Fee', value: details.fee ?? 'Fee unknown', icon: 'fees' },
+    {
+      label: 'Spaces',
+      value: details.capacity?.toLocaleString('en-US') ?? 'Not recorded',
+      icon: 'spaces',
+    },
+    {
+      label: 'Access',
+      value: details.access?.replaceAll('_', ' ') ?? 'Not recorded',
+      icon: 'access',
+    },
+  ] as const
+  const actions = (
+    <View style={styles.actions}>
+      <View style={ui.flex}>
+        <Button
+          testID="parking-get-directions"
+          icon="arrow"
+          disabled={parking.sourceKind === 'sample'}
+          onPress={onDirections}
+        >
+          Go
+        </Button>
+      </View>
+      <IconButton
+        icon="bookmark"
+        label={favorite ? 'Remove from favorites' : 'Save parking'}
+        selected={favorite}
+        disabled={favoriteDisabled || parking.sourceKind === 'sample'}
+        onPress={onFavorite}
+        style={styles.save}
+      />
+    </View>
+  )
   return (
     <ScrollView
       testID={expanded ? 'parking-details-expanded' : 'parking-preview'}
-      style={expanded ? ui.flex : { flexShrink: 1 }}
-      contentContainerStyle={{ paddingBottom: 2 }}
+      style={[ui.sheetScroll, ui.flex]}
+      nestedScrollEnabled
+      scrollEventThrottle={16}
+      onScroll={({ nativeEvent }) =>
+        onScrollOffsetChange(nativeEvent.contentOffset.y)
+      }
     >
-      <View
-        style={[
-          styles.summary,
-          { flexDirection: 'row', alignItems: 'center', gap: 12 },
-        ]}
+      <MotionView
+        style={styles.content}
+        transitionKey={parking.id}
+        onLayout={({ nativeEvent }) =>
+          onContentHeightChange(nativeEvent.layout.height)
+        }
       >
-        <SpotThumbnail key={parking.id} parking={parking} name={title} />
-        <View style={ui.flex}>
-          <Text
-            testID="parking-detail-title"
-            accessibilityRole="header"
-            numberOfLines={1}
-            ellipsizeMode="tail"
-            style={styles.title}
-          >
-            {title}
-          </Text>
-          {meta ? (
-            <Text style={styles.meta} numberOfLines={1}>
-              {meta}
-            </Text>
-          ) : null}
-        </View>
-      </View>
-      {!expanded && chips.length ? (
-        <View style={styles.chips}>
-          {chips.map((chip) => (
+        <View style={styles.summary}>
+          <View style={ui.flex}>
             <Text
-              key={chip}
-              style={[
-                styles.chip,
-                chip === 'Free' && {
-                  backgroundColor: colors.selected,
-                  color: colors.brand,
-                },
-                /open/i.test(chip) && {
-                  backgroundColor: colors.successSurface,
-                  color: colors.success,
-                },
-              ]}
+              testID="parking-detail-title"
+              accessibilityRole="header"
+              style={styles.title}
             >
-              {chip}
+              {details.title}
             </Text>
-          ))}
+            {details.meta ? <Text style={ui.small}>{details.meta}</Text> : null}
+          </View>
+          <ParkingStatus details={details} />
         </View>
-      ) : null}
-      {warning ? (
-        <View style={styles.chips}>
+        {details.warning ? (
+          <Text accessibilityRole="alert" style={[ui.small, styles.warning]}>
+            {details.warning}
+          </Text>
+        ) : null}
+        {storageError ? (
           <Text
             accessibilityRole="alert"
-            style={[
-              styles.chip,
-              { backgroundColor: colors.warningSurface, color: colors.amber },
-            ]}
+            style={[ui.small, ui.error, styles.inset]}
           >
-            {warning}
+            {storageError}
           </Text>
-        </View>
-      ) : null}
-      {storageError ? (
-        <Text
-          accessibilityRole="alert"
-          style={[ui.small, ui.error, styles.summary]}
+        ) : null}
+        {expanded ? actions : null}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.tiles}
         >
-          {storageError}
-        </Text>
-      ) : null}
-      <View style={styles.actions}>
-        <View style={ui.flex}>
-          <Button
-            testID="parking-get-directions"
-            icon="arrow"
-            disabled={parking.sourceKind === 'sample'}
-            onPress={onDirections}
-          >
-            Directions
-          </Button>
-        </View>
-        <IconButton
-          icon="star"
-          label={favorite ? 'Remove from favorites' : 'Save parking'}
-          selected={favorite}
-          disabled={favoriteDisabled || parking.sourceKind === 'sample'}
-          onPress={onFavorite}
-          style={styles.save}
-        />
-      </View>
-      {expanded ? <SpotThumbnail parking={parking} name={title} strip /> : null}
-      {expanded ? (
-        <View style={styles.rows}>
-          {rows.map((row) => (
-            <Pressable
-              key={`${row.label}:${row.value}`}
-              disabled={!row.url}
-              accessibilityRole={row.url ? 'link' : undefined}
-              accessibilityLabel={`${row.label}: ${row.value}`}
-              onPress={() => {
-                if (row.url)
-                  void Linking.openURL(row.url).catch(() => undefined)
-              }}
-              style={styles.row}
-            >
-              <View style={styles.rowIcon}>
-                <FigmaAsset
-                  name={
-                    row.icon === 'clock'
-                      ? 'clock'
-                      : row.icon === 'fees'
-                        ? 'fees'
-                        : row.icon === 'access'
-                          ? 'access'
-                          : 'spaces'
-                  }
-                  size={20}
-                />
+          {tiles.map((tile) => (
+            <View key={tile.label} style={styles.tile}>
+              <View style={styles.labelRow}>
+                <FigmaAsset name={tile.icon} size={24} />
+                <Text style={styles.label}>{tile.label}</Text>
               </View>
-              <View style={ui.flex}>
-                <Text style={styles.label}>{row.label}</Text>
-                <Text
-                  style={[
-                    ui.body,
-                    ui.flex,
-                    row.today && { fontFamily: fonts.semibold },
-                    row.url && ui.link,
-                  ]}
-                >
-                  {row.label === 'Phone' ||
-                  row.label === 'Website' ||
-                  row.label === 'Maximum stay' ||
-                  row.label === 'Height limit' ||
-                  row.label === 'Operator' ||
-                  row.label === 'Type'
-                    ? `${row.label}: ${row.value}`
-                    : row.value}
-                </Text>
-              </View>
-            </Pressable>
+              <Text style={ui.heading}>{tile.value}</Text>
+            </View>
           ))}
-          {updated ? <Text style={ui.small}>{updated}</Text> : null}
-        </View>
-      ) : null}
-      {expanded && sparse ? (
-        <Pressable
-          accessibilityRole="button"
-          onPress={onAddDetails}
-          style={styles.help}
-        >
-          <Text style={ui.small}>Help other drivers</Text>
-          <Text style={[ui.body, ui.link]}>Add missing details</Text>
-          <Text style={ui.small}>
-            Saved as a private preview on this device
-          </Text>
-        </Pressable>
-      ) : null}
-      <Pressable
-        accessibilityRole="button"
-        onPress={onAddDetails}
-        style={styles.correction}
-      >
-        <FigmaAsset name="pencil" size={18} />
-        <Text style={[ui.small, ui.link]}>Suggest a correction</Text>
-      </Pressable>
+        </ScrollView>
+        {!expanded ? actions : null}
+        {expanded ? (
+          <>
+            {details.photo?.image ||
+            details.photo?.commons ||
+            details.photo?.mapillary ? (
+              <SpotThumbnail parking={parking} name={details.title} strip />
+            ) : (
+              <View style={styles.photos}>
+                <View style={styles.photoBadge}>
+                  <FigmaAsset name="camera-brand" size={24} />
+                </View>
+                <View style={ui.flex}>
+                  <Text style={ui.heading}>No photos yet</Text>
+                  <Text style={ui.small}>Add one to help other drivers</Text>
+                </View>
+                <MotionPressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Add a parking photo"
+                  onPress={onAddDetails}
+                  style={({ pressed }) => [styles.add, pressed && ui.pressed]}
+                >
+                  <Text style={[ui.heading, ui.link]}>Add</Text>
+                </MotionPressable>
+              </View>
+            )}
+            <View style={styles.source}>
+              <View style={styles.sourceRow}>
+                <FigmaAsset name="info-brand" size={24} />
+                <View style={ui.flex}>
+                  <Text style={ui.heading}>Source</Text>
+                  <Text style={ui.small}>
+                    {parking.sourceLabel} ·{' '}
+                    {parking.verification === 'verified'
+                      ? 'Verified'
+                      : 'Unverified'}
+                  </Text>
+                  {details.updated ? (
+                    <Text style={ui.small}>{details.updated}</Text>
+                  ) : null}
+                </View>
+              </View>
+              <MotionPressable
+                accessibilityRole="button"
+                onPress={onAddDetails}
+                style={({ pressed }) => [
+                  styles.sourceRow,
+                  styles.correction,
+                  pressed && ui.pressed,
+                ]}
+              >
+                <FigmaAsset name="pencil-brand" size={24} />
+                <Text style={ui.heading}>Suggest a correction</Text>
+              </MotionPressable>
+            </View>
+            {details.rows
+              .filter(
+                (row) =>
+                  !['Fee', 'Spaces', 'Access'].includes(row.label) &&
+                  !(
+                    hours === 'Open 24 hours' &&
+                    details.week?.some((day) => day.day === row.label)
+                  ),
+              )
+              .map((row) => (
+                <MotionPressable
+                  key={`${row.label}:${row.value}`}
+                  disabled={!row.url}
+                  accessibilityRole={row.url ? 'link' : undefined}
+                  accessibilityLabel={`${row.label}: ${row.value}`}
+                  onPress={() => {
+                    if (row.url)
+                      void Linking.openURL(row.url).catch(() => undefined)
+                  }}
+                  style={styles.detailRow}
+                >
+                  <Text style={[styles.label, { minWidth: 80 }]}>
+                    {row.label}
+                  </Text>
+                  <Text
+                    style={[ui.body, { flexShrink: 1 }, row.url && ui.link]}
+                  >
+                    {row.value}
+                  </Text>
+                </MotionPressable>
+              ))}
+          </>
+        ) : null}
+      </MotionView>
     </ScrollView>
   )
 }
 const styles = StyleSheet.create({
-  chips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
+  content: { gap: 14, paddingBottom: 2 },
+  inset: { marginHorizontal: 16 },
+  summary: {
     paddingHorizontal: 16,
-    paddingTop: 10,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
   },
-  chip: {
-    fontFamily: fonts.regular,
-    fontSize: 13,
-    color: colors.ink,
-    backgroundColor: colors.soft,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-  },
-  help: {
-    marginHorizontal: 16,
-    marginTop: 14,
-    padding: 12,
-    borderRadius: 14,
-    backgroundColor: colors.selected,
-    gap: 4,
-    minHeight: 44,
-  },
-  summary: { paddingHorizontal: 16, paddingRight: 56, gap: 4 },
   title: {
     fontFamily: fonts.bold,
-    fontSize: 22,
-    lineHeight: 28,
+    fontSize: 20,
+    lineHeight: 24,
+    letterSpacing: -0.4,
     color: colors.ink,
   },
-  meta: {
-    fontFamily: fonts.regular,
-    fontSize: 13,
-    lineHeight: 18,
-    color: colors.muted,
+  warning: {
+    marginHorizontal: 16,
+    padding: 12,
+    borderRadius: 16,
+    backgroundColor: colors.warningSurface,
+    color: colors.amber,
   },
   actions: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingTop: 16,
     gap: 12,
   },
-  save: { width: 56, height: 56, borderRadius: 28 },
-  rows: {
+  save: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.surface,
+    borderWidth: 2,
+    borderColor: colors.border,
+  },
+  tiles: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 10,
+    paddingHorizontal: 16,
+  },
+  tile: {
+    width: 132,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 4,
+    borderRadius: 16,
+    backgroundColor: colors.soft,
+  },
+  labelRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  label: {
+    fontFamily: fonts.bold,
+    fontSize: 12,
+    lineHeight: 15,
+    color: colors.muted,
+  },
+  photos: {
     marginHorizontal: 16,
-    marginTop: 16,
     padding: 16,
     borderRadius: 20,
     backgroundColor: colors.soft,
-    gap: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
   },
-  rowIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  photoBadge: {
+    width: 48,
+    height: 48,
+    borderRadius: 999,
     backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  label: {
-    fontFamily: fonts.regular,
-    fontSize: 12,
-    lineHeight: 16,
-    color: colors.disabled,
-  },
-  correction: {
-    minHeight: 52,
-    flexDirection: 'row',
-    alignItems: 'center',
+  add: {
+    minHeight: 44,
+    paddingHorizontal: 16,
+    borderRadius: 999,
+    backgroundColor: colors.selected,
     justifyContent: 'center',
-    gap: 8,
-    marginTop: 8,
   },
-  row: {
+  source: {
+    marginHorizontal: 16,
+    borderRadius: 20,
+    backgroundColor: colors.soft,
+    overflow: 'hidden',
+  },
+  sourceRow: {
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+  },
+  correction: { borderTopWidth: 1, borderColor: colors.border, minHeight: 52 },
+  detailRow: {
+    marginHorizontal: 16,
+    flexDirection: 'row',
+    gap: 12,
+    alignItems: 'flex-start',
   },
 })

@@ -134,3 +134,16 @@ export function arrivalTime(seconds: number, now = Date.now()) {
     minute: '2-digit',
   })
 }
+
+/** Bearing of the next non-zero route segment, clockwise from north. */
+export function routeBearing(coordinates: Coordinate[]): number {
+  const first = coordinates[0]
+  if (!first) return 0
+  const next = coordinates.find(
+    (point) => point[0] !== first[0] || point[1] !== first[1],
+  )
+  if (!next) return 0
+  const east = (next[0] - first[0]) * Math.cos((first[1] * Math.PI) / 180)
+  const north = next[1] - first[1]
+  return ((Math.atan2(east, north) * 180) / Math.PI + 360) % 360
+}

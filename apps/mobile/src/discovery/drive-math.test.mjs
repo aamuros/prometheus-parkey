@@ -114,3 +114,44 @@ test('roundabout instructions omit onto for unnamed streets and preserve full na
   const name = 'A very long real road name '.repeat(12).trim()
   assert.equal(parse(name), `At the roundabout, take exit 2 onto ${name}`)
 })
+
+test('navigation marker bearing follows the upcoming route and tolerates duplicate points', async () => {
+  const { routeBearing } = await import('./drive-math.ts')
+  assert.equal(
+    routeBearing([
+      [0, 0],
+      [0, 1],
+    ]),
+    0,
+  )
+  assert.equal(
+    routeBearing([
+      [0, 0],
+      [1, 0],
+    ]),
+    90,
+  )
+  assert.equal(
+    routeBearing([
+      [0, 0],
+      [0, -1],
+    ]),
+    180,
+  )
+  assert.equal(
+    routeBearing([
+      [0, 0],
+      [-1, 0],
+    ]),
+    270,
+  )
+  assert.equal(
+    routeBearing([
+      [0, 0],
+      [0, 0],
+      [1, 0],
+    ]),
+    90,
+  )
+  assert.equal(routeBearing([]), 0)
+})

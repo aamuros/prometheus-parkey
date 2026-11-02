@@ -41,6 +41,34 @@ pnpm format:check
 pnpm build:web
 ```
 
+## Browser regression tests
+
+Playwright covers the Expo app's browser version in desktop and phone-sized
+Chromium. It starts and stops its own Expo server on port 8088:
+
+```sh
+pnpm exec playwright install chromium  # once after installing dependencies
+pnpm test:e2e
+pnpm test:e2e --project=mobile-chromium
+pnpm test:e2e e2e/search.spec.ts        # run one feature
+pnpm exec playwright show-report output/playwright/report
+```
+
+The tests cover parking details and browser Back, street/garage/free filters,
+destination search and history, saved parking and home addresses, parked-car
+location, directions consent, navigation and arrival, and private drafts and corrections.
+They also check reload persistence, undo, denied location access, and recovery
+from search and routing errors. Each test gets fresh browser storage.
+
+The suite uses the checked-in OSM parking snapshot and intercepts map, search,
+and routing requests with test fixtures. Test startup ignores `.env` files and
+disables remote parking reads and telemetry. No backend or API keys are needed.
+These tests check UI behavior; they do not verify live providers, native iOS or
+Android, or the separate operator web preview.
+
+CI runs both browser projects and uploads reports, failure screenshots, and
+traces when tests fail. Local artifacts are ignored under `output/playwright/`.
+
 The operator preview still contains fictional reservation workflows; these are
 absent from the mobile application. No hosted resources, migrations, or production
 submission service are deployed by this repository.

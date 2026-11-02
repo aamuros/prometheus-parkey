@@ -171,8 +171,17 @@ function Workspace() {
               </div>
             </div>
           </div>
-          <p role="status" className={`notice ${notice ? 'has-notice' : ''}`}>
-            {notice}
+          <p
+            role="status"
+            aria-atomic="true"
+            className={`notice ${notice ? 'has-notice' : ''}`}
+          >
+            {notice ? (
+              <span key={notice} className="notice-content">
+                <Icon name="check" size={16} />
+                {notice}
+              </span>
+            ) : null}
           </p>
           {view === 'overview' && (
             <>
@@ -180,14 +189,20 @@ function Workspace() {
                 <div>
                   <span>Available spaces</span>
                   <strong>
-                    {String(free).padStart(2, '0')}
+                    <span key={free} className="metric-value">
+                      {String(free).padStart(2, '0')}
+                    </span>
                     <small> / {bays.length}</small>
                   </strong>
                   <p>Ready for the next arrival</p>
                 </div>
                 <div>
                   <span>Currently parked</span>
-                  <strong>{String(parked.length).padStart(2, '0')}</strong>
+                  <strong>
+                    <span key={parked.length} className="metric-value">
+                      {String(parked.length).padStart(2, '0')}
+                    </span>
+                  </strong>
                   <p>
                     {Math.round((parked.length / bays.length) * 100)}% of total
                     capacity
@@ -195,7 +210,11 @@ function Workspace() {
                 </div>
                 <div>
                   <span>Upcoming arrivals</span>
-                  <strong>{String(upcoming.length).padStart(2, '0')}</strong>
+                  <strong>
+                    <span key={upcoming.length} className="metric-value">
+                      {String(upcoming.length).padStart(2, '0')}
+                    </span>
+                  </strong>
                   <p>Reserved in this sample day</p>
                 </div>
               </section>
@@ -551,7 +570,7 @@ function Workspace() {
 
 function Status({ status }: { status: ReservationStatus }) {
   return (
-    <span className={`status status-${status}`}>
+    <span key={status} className={`status status-${status}`}>
       <span />
       {statusLabels[status]}
     </span>
@@ -603,15 +622,27 @@ function ParkingPlan({
                   >
                     <span className="bay-number">{bay}</span>
                     {status === 'occupied' ? (
-                      <span className="plan-car" aria-hidden="true">
+                      <span
+                        key={status}
+                        className="plan-car"
+                        aria-hidden="true"
+                      >
                         <span />
                       </span>
                     ) : status === 'blocked' ? (
-                      <span className="blocked-mark" aria-hidden="true">
+                      <span
+                        key={status}
+                        className="blocked-mark"
+                        aria-hidden="true"
+                      >
                         ×
                       </span>
                     ) : (
-                      <span className="bay-center" aria-hidden="true">
+                      <span
+                        key={status}
+                        className="bay-center"
+                        aria-hidden="true"
+                      >
                         {status === 'reserved' ? 'R' : 'P'}
                       </span>
                     )}

@@ -135,3 +135,10 @@ test('Your parking restores through links and Back returns to the map', () => {
   assert.equal(layers.at(-1).panel, 'you')
   assert.equal(layers.at(-2).panel, null)
 })
+
+test('free parking filter survives URL and saved preference round trips', () => {
+  const state = parseNavigation('?fees=free')
+  assert.equal(state.fees, 'free')
+  assert.equal(parseNavigation(navigationSearch(state)).fees, 'free')
+  assert.equal(parsePreferences(JSON.stringify({ fees: 'free' })).fees, 'free')
+})

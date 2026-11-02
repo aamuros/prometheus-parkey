@@ -1,0 +1,139 @@
+import type { Coordinate, DiscoveryParking } from '@parkey/shared-types'
+import { useEffect, useState } from 'react'
+import { Animated, Platform, StyleSheet, Text, View } from 'react-native'
+
+import { FigmaAsset } from './figma-assets'
+import { MotionPressable } from './motion'
+import { colors } from './palette'
+import { parkingDetailData } from './parking-detail-data'
+import { ParkingStatus } from './parking-status'
+import { ui } from './ui'
+import { useReducedMotion } from './use-reduced-motion'
+
+export function NearbyLoading() {
+  const reduced = useReducedMotion()
+  const [opacity] = useState(() => new Animated.Value(1))
+  useEffect(() => {
+    if (reduced) {
+      opacity.setValue(1)
+      return
+    }
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(opacity, {
+          toValue: 0.45,
+          duration: 700,
+          isInteraction: false,
+          useNativeDriver: Platform.OS !== 'web',
+        }),
+        Animated.timing(opacity, {
+          toValue: 1,
+          duration: 700,
+          isInteraction: false,
+          useNativeDriver: Platform.OS !== 'web',
+        }),
+      ]),
+    )
+    animation.start()
+    return () => animation.stop()
+  }, [opacity, reduced])
+  return (
+    <View
+      accessibilityLabel="Finding spots near you"
+      accessibilityState={{ busy: true }}
+      style={styles.loadingStrip}
+    >
+      {[0, 1].map((index) => (
+        <Animated.View key={index} style={[styles.card, { opacity }]}>
+          <View style={[styles.content, { gap: 10 }]}>
+            <View
+              style={[
+                styles.skeleton,
+                { width: 70, height: 24, borderRadius: 999 },
+              ]}
+            />
+            <View style={[styles.skeleton, { width: '90%', height: 16 }]} />
+            <View style={[styles.skeleton, { width: '75%', height: 12 }]} />
+          </View>
+          <View style={[styles.go, styles.skeleton]} />
+        </Animated.View>
+      ))}
+    </View>
+  )
+}
+
+export function NearbyCard({
+  parking,
+  location,
+  now,
+  onPress,
+  onGo,
+}: {
+  parking: DiscoveryParking
+  location: Coordinate | null
+  now: Date
+  onPress: () => void
+  onGo: () => void
+}) {
+  const details = parkingDetailData(parking, location, now)
+  return (
+    <View style={styles.card}>
+      <MotionPressable
+        accessibilityRole="button"
+        accessibilityLabel={`${details.title}. ${details.meta}. Open parking details`}
+        onPress={onPress}
+        style={({ pressed }) => [styles.content, pressed && ui.pressed]}
+      >
+        <ParkingStatus details={details} />
+        <Text style={ui.heading} numberOfLines={1}>
+          {details.title}
+        </Text>
+        <Text style={ui.small} numberOfLines={1}>
+          {details.meta}
+        </Text>
+      </MotionPressable>
+      <MotionPressable
+        accessibilityRole="button"
+        accessibilityLabel={`Go to ${details.title}`}
+        disabled={parking.sourceKind === 'sample'}
+        accessibilityState={{ disabled: parking.sourceKind === 'sample' }}
+        onPress={onGo}
+        style={({ pressed }) => [
+          styles.go,
+          pressed && ui.pressed,
+          parking.sourceKind === 'sample' && ui.disabled,
+        ]}
+      >
+        <FigmaAsset name="go" size={24} />
+      </MotionPressable>
+    </View>
+  )
+}
+
+const styles = StyleSheet.create({
+  loadingStrip: {
+    flexDirection: 'row',
+    gap: 12,
+    paddingHorizontal: 16,
+    overflow: 'hidden',
+  },
+  skeleton: { backgroundColor: colors.border, borderRadius: 6 },
+  card: {
+    width: 300,
+    padding: 16,
+    borderRadius: 24,
+    backgroundColor: colors.soft,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  content: { flex: 1, minWidth: 0, gap: 6 },
+  go: {
+    width: 56,
+    height: 56,
+    borderRadius: 999,
+    backgroundColor: colors.brand,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+})

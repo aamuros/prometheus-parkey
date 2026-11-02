@@ -80,6 +80,7 @@ export function ContributionForm({
         style={{ flexShrink: 1 }}
       >
         <ScrollView
+          style={ui.sheetScroll}
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={styles.content}
         >

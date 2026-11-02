@@ -1,10 +1,11 @@
 import type { ComponentRef, ReactNode } from 'react'
 import { useEffect, useRef, useState } from 'react'
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native'
+import { Platform, StyleSheet, Text, View } from 'react-native'
 import type { StyleProp, ViewStyle } from 'react-native'
 import Svg, { Circle, Path } from 'react-native-svg'
 
 import { FigmaAsset } from './figma-assets'
+import { MotionPressable, MotionView, SelectionPop } from './motion'
 import type { FigmaAssetName } from './figma-assets'
 import { colors } from './palette'
 import { parkingPin } from './parking-pin'
@@ -18,6 +19,7 @@ const paths = {
   clock: 'M12 6v6l4 2M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0',
   fees: 'M4 3h16v18l-4-2-4 2-4-2-4 2V3ZM8 8h8M8 12h6',
   access: 'M5 21V3h14v18M9 21V7h6v14M13 14h.01M3 21h18',
+  bookmark: 'M6 3h12v18l-6-4-6 4V3Z',
   star: 'm12 2 3.1 6.3 6.9 1-5 4.9 1.2 6.8-6.2-3.2-6.2 3.2 1.2-6.8-5-4.9 6.9-1L12 2Z',
   search: 'm21 21-5-5M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16',
   locate:
@@ -66,23 +68,29 @@ export function Icon({
   filled?: boolean
 }) {
   const asset: FigmaAssetName | undefined =
-    name === 'arrow' && color === colors.surface
-      ? 'arrow'
-      : name === 'close' && color === colors.muted
-        ? 'close'
-        : name === 'camera' && color === colors.disabled
-          ? 'camera'
-          : name === 'search' && color === colors.disabled
-            ? 'search'
-            : name === 'info' && color === colors.disabled
-              ? 'info'
-              : name === 'locate' && color === colors.action
-                ? 'locate'
-                : name === 'star' && !filled && color === colors.brand
-                  ? 'star'
-                  : name === 'pin' && color === colors.brand
-                    ? 'pin'
-                    : undefined
+    name === 'check' && color === colors.surface
+      ? 'check-white'
+      : name === 'locate' && color === colors.ink
+        ? 'locate-ink'
+        : name === 'bookmark' && !filled
+          ? 'bookmark'
+          : name === 'arrow' && color === colors.surface
+            ? 'arrow'
+            : name === 'close' && color === colors.muted
+              ? 'close'
+              : name === 'camera' && color === colors.disabled
+                ? 'camera'
+                : name === 'search' && color === colors.disabled
+                  ? 'search'
+                  : name === 'info' && color === colors.disabled
+                    ? 'info'
+                    : name === 'locate' && color === colors.action
+                      ? 'locate'
+                      : name === 'star' && !filled && color === colors.brand
+                        ? 'star'
+                        : name === 'pin' && color === colors.brand
+                          ? 'pin'
+                          : undefined
   if (asset) return <FigmaAsset name={asset} size={size} />
   return (
     <Svg
@@ -97,7 +105,12 @@ export function Icon({
     >
       {name === 'info' ? <Circle cx={12} cy={12} r={10} /> : null}
       {name === 'pin' ? <Circle cx={12} cy={10} r={2.5} /> : null}
-      <Path d={paths[name]} fill={name === 'star' && filled ? color : 'none'} />
+      <Path
+        d={paths[name]}
+        fill={
+          (name === 'star' || name === 'bookmark') && filled ? color : 'none'
+        }
+      />
     </Svg>
   )
 }
@@ -126,12 +139,14 @@ export function IconButton({
       target.current.title = label
   }, [label])
   return (
-    <Pressable
+    <MotionPressable
       ref={target}
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ disabled, selected }}
-      aria-pressed={icon === 'star' ? selected : undefined}
+      aria-pressed={
+        icon === 'star' || icon === 'bookmark' ? selected : undefined
+      }
       disabled={disabled}
       onPress={onPress}
       onFocus={() => setFocused(true)}
@@ -145,30 +160,32 @@ export function IconButton({
         focused && ui.focused,
       ]}
     >
-      <Icon
-        name={icon}
-        filled={selected}
-        size={
-          icon === 'close' || icon === 'info'
-            ? 18
-            : icon === 'star' || icon === 'locate'
-              ? 24
-              : 22
-        }
-        color={
-          disabled
-            ? colors.disabled
-            : selected
-              ? colors.brandDeep
-              : (color ??
-                (icon === 'close' || icon === 'info'
-                  ? colors.muted
-                  : icon === 'star'
-                    ? colors.brand
-                    : colors.action))
-        }
-      />
-    </Pressable>
+      <SelectionPop selected={selected}>
+        <Icon
+          name={icon}
+          filled={selected}
+          size={
+            icon === 'close' || icon === 'info'
+              ? 18
+              : icon === 'star' || icon === 'bookmark' || icon === 'locate'
+                ? 24
+                : 22
+          }
+          color={
+            disabled
+              ? colors.disabled
+              : selected
+                ? colors.brandDeep
+                : (color ??
+                  (icon === 'close' || icon === 'info'
+                    ? colors.muted
+                    : icon === 'star'
+                      ? colors.brand
+                      : colors.action))
+          }
+        />
+      </SelectionPop>
+    </MotionPressable>
   )
 }
 
@@ -194,7 +211,7 @@ export function Button({
       ? colors.brandDeep
       : colors.surface
   return (
-    <Pressable
+    <MotionPressable
       testID={testID}
       accessibilityRole="button"
       accessibilityState={{ disabled }}
@@ -211,8 +228,8 @@ export function Button({
       ]}
     >
       <Text style={[ui.buttonText, { color: foreground }]}>{children}</Text>
-      {icon ? <Icon name={icon} color={foreground} size={22} /> : null}
-    </Pressable>
+      {icon ? <Icon name={icon} color={foreground} size={20} /> : null}
+    </MotionPressable>
   )
 }
 
@@ -227,7 +244,7 @@ export function Choice({
 }) {
   const [focused, setFocused] = useState(false)
   return (
-    <Pressable
+    <MotionPressable
       accessibilityRole="button"
       accessibilityState={{ selected }}
       aria-pressed={selected}
@@ -241,10 +258,12 @@ export function Choice({
         focused && ui.focused,
       ]}
     >
-      <Text style={[ui.choiceText, selected && ui.choiceTextSelected]}>
-        {children}
-      </Text>
-    </Pressable>
+      <SelectionPop selected={selected}>
+        <Text style={[ui.choiceText, selected && ui.choiceTextSelected]}>
+          {children}
+        </Text>
+      </SelectionPop>
+    </MotionPressable>
   )
 }
 
@@ -260,10 +279,17 @@ export function Notice({ children }: { children: ReactNode }) {
 export const ui = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   flex: { flex: 1 },
+  sheetScroll: {
+    flexShrink: 1,
+    minHeight: 0,
+    ...Platform.select({
+      web: { overscrollBehaviorY: 'contain', overflowAnchor: 'none' },
+    }),
+  },
   body: {
     fontFamily: fonts.regular,
     fontSize: 15,
-    lineHeight: 21,
+    lineHeight: 23,
     color: colors.ink,
   },
   muted: {
@@ -281,23 +307,23 @@ export const ui = StyleSheet.create({
   link: { color: colors.brandDeep, fontFamily: fonts.semibold },
   error: { color: colors.error },
   title: {
-    fontFamily: fonts.bold,
+    fontFamily: fonts.black,
     fontSize: 28,
-    lineHeight: 34,
-    letterSpacing: -0.14,
+    lineHeight: 31,
+    letterSpacing: -0.8,
     color: colors.ink,
   },
   sectionTitle: {
-    fontFamily: fonts.bold,
-    fontSize: 22,
-    lineHeight: 28,
-    letterSpacing: -0.4,
+    fontFamily: fonts.black,
+    fontSize: 20,
+    lineHeight: 24,
+    letterSpacing: -0.5,
     color: colors.ink,
   },
   heading: {
-    fontFamily: fonts.semibold,
-    fontSize: 18,
-    lineHeight: 24,
+    fontFamily: fonts.bold,
+    fontSize: 17,
+    lineHeight: 22,
     letterSpacing: -0.2,
     color: colors.ink,
   },
@@ -305,7 +331,7 @@ export const ui = StyleSheet.create({
     fontFamily: fonts.semibold,
     fontSize: 12,
     lineHeight: 18,
-    letterSpacing: 0.8,
+    letterSpacing: 0.4,
     color: colors.muted,
   },
   iconButton: {
@@ -321,7 +347,7 @@ export const ui = StyleSheet.create({
     paddingHorizontal: 24,
     paddingVertical: 14,
     borderRadius: 999,
-    backgroundColor: colors.action,
+    backgroundColor: colors.brand,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -344,7 +370,7 @@ export const ui = StyleSheet.create({
     paddingHorizontal: 16,
     borderRadius: 999,
     backgroundColor: colors.surface,
-    boxShadow: `0px 4px 16px rgba(30, 27, 56, 0.08)`,
+    boxShadow: `inset 0px 0px 0px 2px ${colors.border}`,
   },
   iconSelected: { backgroundColor: colors.selected },
   choiceSelected: {
@@ -352,16 +378,22 @@ export const ui = StyleSheet.create({
     boxShadow: 'none',
   },
   choiceText: {
-    fontFamily: fonts.semibold,
-    fontSize: 14,
+    fontFamily: fonts.bold,
+    fontSize: 17,
     lineHeight: 20,
     color: colors.ink,
   },
   choiceTextSelected: { color: colors.surface },
   pressed: { backgroundColor: colors.soft },
   iconPressed: { backgroundColor: colors.disabledSurface },
-  buttonPressed: { backgroundColor: colors.actionPressed },
-  secondaryPressed: { backgroundColor: colors.selectedPressed },
+  buttonPressed: {
+    backgroundColor: colors.brandDeep,
+    transform: [{ scale: 0.97 }],
+  },
+  secondaryPressed: {
+    backgroundColor: colors.selectedPressed,
+    transform: [{ scale: 0.97 }],
+  },
   disabled: {
     backgroundColor: colors.disabledSurface,
     boxShadow: `inset 0px 0px 0px 1px ${colors.border}`,
@@ -378,7 +410,7 @@ export const ui = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
     padding: 16,
-    borderRadius: 16,
+    borderRadius: 24,
     backgroundColor: colors.soft,
     alignItems: 'flex-start',
   },
@@ -386,7 +418,7 @@ export const ui = StyleSheet.create({
     fontFamily: fonts.regular,
     backgroundColor: colors.surface,
     boxShadow: `inset 0px 0px 0px 1px ${colors.border}`,
-    borderRadius: 12,
+    borderRadius: 24,
     padding: 16,
     minHeight: 56,
     fontSize: 16,
@@ -404,32 +436,42 @@ export function UndoToast({
   onUndo: () => void
 }) {
   return (
-    <View
+    <MotionView
+      key={message}
       accessibilityLiveRegion="polite"
       style={{
         flexDirection: 'row',
         alignItems: 'center',
         gap: 12,
-        backgroundColor: colors.ink,
-        paddingHorizontal: 16,
-        borderRadius: 16,
+        backgroundColor: colors.dark,
+        paddingLeft: 18,
+        paddingRight: 8,
+        paddingVertical: 6,
+        minHeight: 52,
+        borderRadius: 20,
       }}
     >
       <Text style={[ui.body, ui.flex, { color: colors.surface }]}>
         {message}
       </Text>
-      <Pressable
+      <MotionPressable
         accessibilityRole="button"
         accessibilityLabel="Undo last change"
         onPress={onUndo}
         style={({ pressed }) => [
-          { minHeight: 44, minWidth: 44, justifyContent: 'center' },
-          pressed && { backgroundColor: colors.muted },
+          {
+            minHeight: 40,
+            paddingHorizontal: 16,
+            borderRadius: 999,
+            backgroundColor: colors.darkRaised,
+            justifyContent: 'center',
+          },
+          pressed && { opacity: 0.8 },
         ]}
       >
-        <Text style={[ui.heading, { color: colors.surface }]}>Undo</Text>
-      </Pressable>
-    </View>
+        <Text style={[ui.heading, { color: colors.selected }]}>Undo</Text>
+      </MotionPressable>
+    </MotionView>
   )
 }
 export function LoadingRows() {

@@ -64,7 +64,12 @@ export function parseNavigation(
   )
     state.position = position
   if (params.has('fees'))
-    state.fees = params.get('fees') === 'applies' ? 'applies' : 'all'
+    state.fees =
+      params.get('fees') === 'free'
+        ? 'free'
+        : params.get('fees') === 'applies'
+          ? 'applies'
+          : 'all'
   state.selectedId = params.get('spot')?.slice(0, 200) || null
   state.query = (params.get('q') ?? '').slice(0, 180)
   state.searchPoint = null
@@ -94,7 +99,7 @@ export function navigationSearch(state: NavigationState): string {
     filter: state.filter,
     sheet: state.position,
   })
-  if (state.fees === 'applies') params.set('fees', state.fees)
+  if (state.fees !== 'all') params.set('fees', state.fees)
   if (state.selectedId) params.set('spot', state.selectedId)
   if (state.query) params.set('q', state.query)
   if (state.query && state.searchPoint) {
@@ -132,7 +137,10 @@ export function parsePreferences(
       const parsed = parseNavigation(`?sheet=${raw.position}`)
       result.position = parsed.position
     }
-    if ('fees' in raw && (raw.fees === 'all' || raw.fees === 'applies'))
+    if (
+      'fees' in raw &&
+      (raw.fees === 'all' || raw.fees === 'applies' || raw.fees === 'free')
+    )
       result.fees = raw.fees
     return result
   } catch {

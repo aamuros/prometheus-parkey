@@ -13,6 +13,7 @@ export default defineConfig(
     '**/.expo/**',
     '**/expo-env.d.ts',
     '**/routeTree.gen.ts',
+    'output/playwright/**',
     'apps/mobile/android/**',
     'apps/mobile/ios/**',
     'apps/mobile/public/maplibre/**',

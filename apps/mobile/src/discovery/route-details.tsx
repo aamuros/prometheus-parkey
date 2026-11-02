@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   ActivityIndicator,
   Linking,
@@ -19,8 +19,9 @@ import { arrivalTime } from './drive-math'
 import { directionsUrl } from './model'
 import { routeDistance, routeDuration } from './routing'
 import type { DrivingStep } from './routing'
+import { createSheetDragGuard } from './sheet-state'
 import { fonts } from './typography'
-import { Button, colors, IconButton, ui } from './ui'
+import { Button, Choice, colors, ui } from './ui'
 import type { DrivePhase } from './use-drive-navigation'
 import type { RouteState } from './use-route'
 
@@ -29,11 +30,13 @@ export function NavigationBanner({
   distance,
   rerouting,
   then,
+  night = false,
 }: {
   then?: DrivingStep | undefined
   step: DrivingStep | undefined
   distance: number
   rerouting: boolean
+  night?: boolean
 }) {
   const path =
     step?.maneuver.includes('roundabout') || step?.maneuver === 'rotary'
@@ -48,11 +51,14 @@ export function NavigationBanner({
               ? 'M6 22V3h13v10H6'
               : 'M12 22V3m-7 7 7-7 7 7'
   return (
-    <View testID="navigation-banner" style={[styles.banner, ui.shadow]}>
+    <View
+      testID="navigation-banner"
+      style={[styles.banner, night && styles.nightSurface, ui.shadow]}
+    >
       <View style={ui.row}>
         <View style={styles.turnBadge}>
           {step?.modifier.includes('right') ? (
-            <FigmaAsset name="turn-right" size={34} />
+            <FigmaAsset name="nav-right" size={33.6} />
           ) : (
             <Svg
               width={34}
@@ -78,10 +84,10 @@ export function NavigationBanner({
         </View>
       </View>
       {then ? (
-        <View style={styles.then}>
+        <View style={[styles.then, night && { backgroundColor: colors.dark }]}>
           <Text style={styles.thenLabel}>Then</Text>
           {then.modifier.includes('left') ? (
-            <FigmaAsset name="then-left" size={16} />
+            <FigmaAsset name="nav-left" size={24} />
           ) : null}
           <Text style={[ui.small, { color: colors.surface, flex: 1 }]}>
             {then.instruction}
@@ -100,17 +106,18 @@ export function RouteDetails({
   starting,
   denied,
   message,
-  fromMapCenter,
   remainingDistance,
   remainingDuration,
   onStart,
   onPark,
   onNext,
   saving,
+  parked,
+  onAnswer,
   onClose,
-  onDetails,
   onRetry,
   onHeightChange,
+  night = false,
 }: {
   destinationName: string
   destination: Coordinate
@@ -119,68 +126,114 @@ export function RouteDetails({
   starting: boolean
   denied: boolean
   message: string | null
-  fromMapCenter: boolean
   remainingDistance: number | undefined
   remainingDuration: number | undefined
   onStart: () => void
   onPark: () => void
   onNext: (() => void) | null
   saving: boolean
+  parked: boolean
+  onAnswer: ((answer: 'No limit' | '2 hours') => void) | null
   onClose: () => void
-  onDetails: (() => void) | null
   onRetry: () => void
   onHeightChange: (height: number) => void
+  night?: boolean
 }) {
   const { height } = useWindowDimensions()
   const insets = useSafeAreaInsets()
-  const [expanded, setExpanded] = useState(false)
-  const [gesture] = useState(() =>
-    PanResponder.create({
-      onMoveShouldSetPanResponder: (_, event) => Math.abs(event.dy) > 12,
-      onPanResponderRelease: (_, event) => {
-        if (event.dy < -25) setExpanded(true)
-        if (event.dy > 25) setExpanded(false)
-      },
-    }),
+  const [unsure, setUnsure] = useState(false)
+  const [dragGuard] = useState(createSheetDragGuard)
+  const gesture = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponderCapture: () => {
+          dragGuard.reset()
+          return false
+        },
+        onPanResponderGrant: dragGuard.start,
+        onMoveShouldSetPanResponder: (_, event) =>
+          Math.abs(event.dy) > 12 && Math.abs(event.dy) > Math.abs(event.dx),
+        onPanResponderRelease: (_, event) => {
+          if (event.dy > 25 || event.vy > 0.5) onClose()
+        },
+      }),
+    [onClose, dragGuard],
   )
   const busy = state.status === 'locating' || state.status === 'loading'
   const duration = remainingDuration ?? state.route?.duration
   const distance = remainingDistance ?? state.route?.distance
+  const floating = phase === 'navigating'
+  const floatingBottom = floating ? Math.max(insets.bottom, 24) : 0
   return (
     <View
       testID="route-panel"
-      onLayout={(event) => onHeightChange(event.nativeEvent.layout.height)}
+      onLayout={(event) =>
+        onHeightChange(event.nativeEvent.layout.height + floatingBottom)
+      }
       style={[
         styles.sheet,
-        phase === 'navigating' && styles.tripBar,
+        floating && styles.tripBar,
+        floating && night && styles.nightSurface,
         ui.shadow,
         {
-          maxHeight: height * 0.75,
-          paddingBottom: Math.max(insets.bottom, 14),
+          maxHeight: height * 0.8,
+          bottom: floatingBottom,
+          paddingBottom: floating ? 16 : Math.max(insets.bottom, 24),
         },
       ]}
     >
-      {phase === 'navigating' ? (
+      {floating ? (
         <>
-          <View style={[ui.row, { gap: 32 }]}>
+          <View style={[ui.row, { gap: 12 }]}>
             <View style={ui.flex}>
               {duration !== undefined && distance !== undefined ? (
                 <>
-                  <Text style={ui.sectionTitle}>{routeDuration(duration)}</Text>
-                  <Text style={ui.small}>
+                  <Text
+                    style={[styles.eta, night && { color: colors.surface }]}
+                  >
+                    {routeDuration(duration)}
+                  </Text>
+                  <Text
+                    style={[ui.small, night && { color: colors.onDarkMuted }]}
+                  >
                     {routeDistance(distance)} · Arrive {arrivalTime(duration)}
                   </Text>
                 </>
               ) : (
-                <Text style={ui.body}>Calculating route…</Text>
+                <Text style={[ui.body, night && { color: colors.surface }]}>
+                  Calculating route…
+                </Text>
               )}
             </View>
+            {onNext ? (
+              <Pressable
+                accessibilityRole="button"
+                onPress={onNext}
+                style={({ pressed }) => [
+                  styles.next,
+                  night && { backgroundColor: colors.dark },
+                  pressed && { opacity: 0.8 },
+                ]}
+              >
+                <Text
+                  style={[styles.nextText, night && { color: colors.surface }]}
+                >
+                  Next spot
+                </Text>
+              </Pressable>
+            ) : null}
             <Pressable
               accessibilityRole="button"
               onPress={onClose}
-              style={styles.end}
+              style={({ pressed }) => [
+                styles.end,
+                night && { backgroundColor: colors.dark },
+                pressed && { opacity: 0.8 },
+              ]}
             >
-              <Text style={styles.endText}>End</Text>
+              <Text style={[styles.endText, night && { color: '#FF8F85' }]}>
+                End
+              </Text>
             </Pressable>
           </View>
           {message || state.error ? (
@@ -189,193 +242,167 @@ export function RouteDetails({
             </Text>
           ) : null}
         </>
-      ) : phase === 'arrived' ? (
-        <>
-          <View style={styles.handle} />
-          <View style={ui.row}>
-            <Text accessibilityRole="header" style={[ui.title, ui.flex]}>
-              You’ve arrived
-            </Text>
-            <IconButton
-              icon="close"
-              label="Close directions"
-              onPress={onClose}
-            />
-          </View>
-          <Text style={ui.small}>{destinationName}</Text>
-          <View style={styles.warning}>
-            <FigmaAsset name="warning" size={18} />
-            <Text style={[ui.small, { color: colors.amber, flex: 1 }]}>
-              Confirm the entrance and posted signs.
-            </Text>
-          </View>
-          <Button disabled={saving} onPress={onPark}>
-            {saving ? 'Saving…' : 'I parked here'}
-          </Button>
-          {onNext ? (
-            <Button secondary disabled={saving} onPress={onNext}>
-              Can’t park here · Next nearest
-            </Button>
-          ) : (
-            <Text style={ui.small}>
-              No other mapped parking of this type nearby.
-            </Text>
-          )}
-          {message ? (
-            <Text accessibilityRole="alert" style={[ui.small, ui.error]}>
-              {message}
-            </Text>
-          ) : null}
-        </>
       ) : (
-        <ScrollView
-          style={{ flexShrink: 1 }}
-          contentContainerStyle={{ gap: 16 }}
-        >
+        <>
           <View {...gesture.panHandlers}>
-            <View style={styles.handle} />
-            <View style={[ui.row, { alignItems: 'flex-start' }]}>
-              <Text
-                accessibilityRole="header"
-                style={[ui.sectionTitle, ui.flex]}
-              >
-                {destinationName}
-              </Text>
-              <IconButton
-                icon="close"
-                label="Close directions"
-                onPress={onClose}
-              />
-            </View>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Dismiss directions. Swipe down or activate to return to the map"
+              onPress={({ nativeEvent }) => {
+                const keyboard =
+                  'detail' in nativeEvent && nativeEvent.detail === 0
+                if (dragGuard.allowPress(keyboard)) onClose()
+              }}
+              style={styles.handleTouch}
+            >
+              <View style={styles.handle} />
+            </Pressable>
           </View>
-          {state.route ? (
-            <>
-              <View
-                style={[
-                  ui.row,
-                  { justifyContent: 'space-between', alignItems: 'flex-end' },
-                ]}
-                accessibilityLiveRegion="polite"
-              >
-                <Text style={styles.eta}>
-                  {routeDuration(state.route.duration)}
-                </Text>
-                <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={ui.sectionTitle}>
-                    {routeDistance(state.route.distance)}
+          <ScrollView
+            style={ui.sheetScroll}
+            contentContainerStyle={{ gap: 14 }}
+          >
+            {phase === 'arrived' ? (
+              <>
+                <View style={{ gap: 2 }}>
+                  <Text accessibilityRole="header" style={ui.title}>
+                    You made it!
                   </Text>
-                  <Text style={ui.small}>
-                    Arrive {arrivalTime(state.route.duration)}
+                  <Text style={[ui.body, { color: colors.muted }]}>
+                    {destinationName}
                   </Text>
                 </View>
-              </View>
-              {fromMapCenter ? (
-                <Text style={ui.small}>
-                  Preview from map center · Start uses your live location
-                </Text>
-              ) : null}
-            </>
-          ) : busy ? (
-            <View style={ui.row}>
-              <ActivityIndicator color={colors.accent} />
-              <Text style={ui.body}>Calculating route…</Text>
-            </View>
-          ) : null}
-          {message || state.error ? (
-            <Text accessibilityRole="alert" style={[ui.small, ui.error]}>
-              {message ?? state.error}
-            </Text>
-          ) : null}
-          <View style={ui.row}>
-            <View style={ui.flex}>
-              <Button
-                icon="arrow"
-                disabled={starting || !state.route}
-                onPress={onStart}
-              >
-                {starting ? 'Locating…' : 'Start'}
-              </Button>
-            </View>
-            {state.route ? (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Steps"
-                accessibilityState={{ expanded }}
-                onPress={() => setExpanded(!expanded)}
-                style={styles.stepsToggle}
-              >
-                <Text style={[ui.heading, ui.link]}>Steps</Text>
-              </Pressable>
-            ) : null}
-          </View>
-          {expanded ? (
-            <Text style={ui.small}>
-              Live guidance while Parkey is open · No voice guidance
-            </Text>
-          ) : null}
-          {expanded && onDetails ? (
-            <Button secondary onPress={onDetails}>
-              Parking details
-            </Button>
-          ) : null}
-          {!state.route && !busy ? (
-            <Button secondary onPress={onRetry}>
-              Try again
-            </Button>
-          ) : null}
-          {denied || state.error ? (
-            <View style={{ gap: 8 }}>
-              {(['google', 'apple', 'waze'] as const).map((provider) => (
                 <Button
-                  key={provider}
-                  secondary
-                  onPress={() => {
-                    void Linking.openURL(directionsUrl(destination, provider))
-                  }}
+                  icon="check"
+                  disabled={saving}
+                  onPress={parked ? () => undefined : onPark}
                 >
-                  Open in{' '}
-                  {provider === 'google'
-                    ? 'Google Maps'
-                    : provider === 'apple'
-                      ? 'Apple Maps'
-                      : 'Waze'}
+                  {saving
+                    ? 'Saving…'
+                    : parked
+                      ? 'Parked here'
+                      : 'I parked here'}
                 </Button>
-              ))}
-            </View>
-          ) : null}
-          {state.route ? (
-            <>
-              {expanded ? (
-                <ScrollView
-                  style={{ flexShrink: 1 }}
-                  contentContainerStyle={{ gap: 16 }}
-                >
-                  {state.route.steps.map((item, index) => (
-                    <View
-                      key={index}
-                      style={[ui.row, { alignItems: 'flex-start' }]}
-                    >
-                      <Text style={styles.number}>{index + 1}</Text>
+                <View style={styles.warning}>
+                  <FigmaAsset name="arrival-info" size={24} />
+                  <Text style={[ui.small, { color: colors.ink, flex: 1 }]}>
+                    Check the signs before you leave your car.
+                  </Text>
+                </View>
+                {onAnswer ? (
+                  <View style={styles.help}>
+                    <View style={ui.row}>
+                      <FigmaAsset name="mascot" size={56} />
                       <View style={ui.flex}>
-                        <Text style={ui.body}>{item.instruction}</Text>
-                        {item.distance > 0 ? (
-                          <Text style={ui.small}>
-                            Continue for {routeDistance(item.distance)}
-                          </Text>
-                        ) : null}
+                        <Text style={[ui.heading, ui.link]}>
+                          Help other drivers
+                        </Text>
+                        <Text style={ui.body}>Is there a time limit here?</Text>
                       </View>
                     </View>
-                  ))}
-                </ScrollView>
-              ) : null}
-            </>
-          ) : null}
-        </ScrollView>
+                    <View style={[ui.row, { gap: 8, flexWrap: 'wrap' }]}>
+                      <Choice
+                        selected={false}
+                        onPress={() => onAnswer('No limit')}
+                      >
+                        No limit
+                      </Choice>
+                      <Choice
+                        selected={false}
+                        onPress={() => onAnswer('2 hours')}
+                      >
+                        2 hours
+                      </Choice>
+                      <Choice selected={unsure} onPress={() => setUnsure(true)}>
+                        Not sure
+                      </Choice>
+                    </View>
+                    {unsure ? (
+                      <Text accessibilityLiveRegion="polite" style={ui.small}>
+                        That’s okay — check the posted signs.
+                      </Text>
+                    ) : null}
+                  </View>
+                ) : null}
+                {onNext ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    disabled={saving}
+                    onPress={onNext}
+                    style={styles.nextLink}
+                  >
+                    <Text style={[ui.small, ui.link]}>
+                      Not here? Find the next nearest spot
+                    </Text>
+                  </Pressable>
+                ) : (
+                  <Text style={ui.small}>
+                    No other mapped parking of this type nearby.
+                  </Text>
+                )}
+              </>
+            ) : (
+              <>
+                <Text accessibilityRole="header" style={ui.sectionTitle}>
+                  {destinationName}
+                </Text>
+                {busy || starting ? (
+                  <View style={ui.row}>
+                    <ActivityIndicator color={colors.brand} />
+                    <Text style={ui.body}>
+                      {starting ? 'Starting navigation…' : 'Calculating route…'}
+                    </Text>
+                  </View>
+                ) : null}
+                {state.route && !starting ? (
+                  <Button icon="arrow" onPress={onStart}>
+                    Go
+                  </Button>
+                ) : null}
+                {!state.route && !busy ? (
+                  <Button secondary onPress={onRetry}>
+                    Try again
+                  </Button>
+                ) : null}
+              </>
+            )}
+            {message || state.error ? (
+              <Text accessibilityRole="alert" style={[ui.small, ui.error]}>
+                {message ?? state.error}
+              </Text>
+            ) : null}
+            {denied || state.error ? (
+              <View style={{ gap: 8 }}>
+                {(['google', 'apple', 'waze'] as const).map((provider) => (
+                  <Button
+                    key={provider}
+                    secondary
+                    onPress={() => {
+                      void Linking.openURL(directionsUrl(destination, provider))
+                    }}
+                  >
+                    Open in{' '}
+                    {provider === 'google'
+                      ? 'Google Maps'
+                      : provider === 'apple'
+                        ? 'Apple Maps'
+                        : 'Waze'}
+                  </Button>
+                ))}
+              </View>
+            ) : null}
+          </ScrollView>
+        </>
       )}
     </View>
   )
 }
 const styles = StyleSheet.create({
+  nightSurface: {
+    backgroundColor: colors.darkRaised,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
   sheet: {
     position: 'absolute',
     bottom: 0,
@@ -386,44 +413,31 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     backgroundColor: colors.surface,
-    padding: 16,
-    gap: 16,
+    paddingHorizontal: 16,
+    paddingTop: 0,
+    gap: 0,
   },
+  handleTouch: { height: 32, alignItems: 'center', justifyContent: 'center' },
   handle: {
     width: 40,
-    height: 4,
-    borderRadius: 2,
+    height: 5,
+    borderRadius: 3,
     backgroundColor: colors.border,
-    alignSelf: 'center',
-    marginBottom: 12,
-  },
-  number: {
-    fontFamily: fonts.semibold,
-    minWidth: 32,
-    fontSize: 14,
-    lineHeight: 24,
-    color: colors.action,
-  },
-  stepsToggle: {
-    minHeight: 56,
-    borderRadius: 28,
-    backgroundColor: colors.selected,
-    paddingHorizontal: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   banner: {
     backgroundColor: colors.dark,
     borderRadius: 28,
     padding: 16,
-    gap: 12,
+    gap: 14,
   },
   tripBar: {
     left: 16,
     right: 16,
-    bottom: 24,
     borderRadius: 28,
-    paddingHorizontal: 20,
+    paddingLeft: 24,
+    paddingRight: 16,
+    paddingTop: 16,
+    gap: 12,
   },
   turnBadge: {
     width: 64,
@@ -436,7 +450,8 @@ const styles = StyleSheet.create({
   maneuverDistance: {
     fontFamily: fonts.black,
     fontSize: 40,
-    lineHeight: 46,
+    lineHeight: 40,
+    letterSpacing: -1.2,
     color: colors.surface,
   },
   then: {
@@ -444,43 +459,66 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     backgroundColor: colors.darkRaised,
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    borderRadius: 999,
+    paddingLeft: 14,
+    paddingRight: 16,
+    paddingVertical: 10,
   },
   thenLabel: {
-    fontFamily: fonts.semibold,
+    fontFamily: fonts.bold,
     fontSize: 12,
     color: colors.onDarkMuted,
   },
+  next: {
+    backgroundColor: colors.soft,
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    minHeight: 49,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  nextText: { fontFamily: fonts.bold, fontSize: 15, color: colors.ink },
   end: {
     backgroundColor: colors.dangerSurface,
     borderRadius: 999,
     paddingHorizontal: 24,
-    minHeight: 48,
+    minHeight: 49,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  endText: { fontFamily: fonts.bold, fontSize: 17, color: colors.error },
+  endText: { fontFamily: fonts.semibold, fontSize: 17, color: colors.error },
   warning: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
     backgroundColor: colors.warningSurface,
-    borderRadius: 16,
-    padding: 12,
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  help: {
+    padding: 16,
+    borderRadius: 28,
+    backgroundColor: colors.selected,
+    gap: 14,
+  },
+  nextLink: {
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 4,
   },
   eta: {
-    fontFamily: fonts.black,
-    fontSize: 40,
-    lineHeight: 48,
+    fontFamily: fonts.bold,
+    fontSize: 28,
+    lineHeight: 31,
+    letterSpacing: -0.56,
     color: colors.ink,
-    flexShrink: 1,
   },
   maneuver: {
-    fontFamily: fonts.semibold,
-    fontSize: 18,
-    lineHeight: 24,
+    fontFamily: fonts.regular,
+    fontSize: 15,
+    lineHeight: 22,
     color: colors.onDarkMuted,
     flexShrink: 1,
   },

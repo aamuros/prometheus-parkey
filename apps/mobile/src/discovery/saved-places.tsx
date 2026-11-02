@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Pressable, StyleSheet, Text, View } from 'react-native'
+import { StyleSheet, Text, View } from 'react-native'
 import type { Coordinate, DiscoveryParking } from '@parkey/shared-types'
 
-import { PILOT_CENTER } from './model'
+import { dateLabel, PILOT_CENTER } from './model'
+import { fonts } from './typography'
 import { parkingTitle } from './presentation'
 import { resolveSaved } from './local-state'
 import type { SavedRecord } from './local-state'
@@ -12,7 +13,8 @@ import { ParkingPage, ParkingTile } from './parking-profile'
 import { useSavedAddresses } from './saved-addresses'
 import type { AddressKind } from './saved-addresses'
 import { FigmaAsset } from './figma-assets'
-import { Button, Choice, colors, IconButton, Notice, UndoToast, ui } from './ui'
+import { MotionPressable, MotionView } from './motion'
+import { Button, Choice, colors, Notice, UndoToast, ui } from './ui'
 import type { useLocalState } from './use-local-state'
 
 export function SavedPlaces({
@@ -25,8 +27,8 @@ export function SavedPlaces({
   onDirections,
   onSelect,
   onAddPlace,
-  onParkingDirections,
   onLocateAddress,
+  onClose,
 }: {
   local: ReturnType<typeof useLocalState>
   records: DiscoveryParking[]
@@ -37,11 +39,11 @@ export function SavedPlaces({
   onDirections: () => void
   onSelect: (record: DiscoveryParking) => void
   onAddPlace: () => void
-  onParkingDirections: (record: DiscoveryParking) => void
   onLocateAddress: () => Promise<Coordinate | null>
+  onClose: () => void
 }) {
-  const [managing, setManaging] = useState(false)
-  const [tab, setTab] = useState<'favorites' | 'recents'>('recents')
+  const [showAddresses, setShowAddresses] = useState(false)
+  const [tab, setTab] = useState<'favorites' | 'recents'>('favorites')
   const savedAddresses = useSavedAddresses()
   const [editing, setEditing] = useState<AddressKind | null>(null)
   const [addressQuery, setAddressQuery] = useState('')
@@ -63,7 +65,7 @@ export function SavedPlaces({
     return (
       <View key={saved.key} style={styles.savedRow}>
         <View style={ui.row}>
-          <Pressable
+          <MotionPressable
             accessibilityRole="button"
             accessibilityLabel={`${title}. ${record ? 'View parking' : 'Show saved area'}`}
             onPress={() =>
@@ -80,24 +82,12 @@ export function SavedPlaces({
               </Text>
               <Text style={ui.small} numberOfLines={1}>
                 {record
-                  ? `${record.kind === 'street' ? 'Street' : record.kind === 'garage' ? 'Garage' : 'Lot'}${record.fees ? ` · ${record.fees}` : ''}`
+                  ? `${record.kind === 'street' ? 'Street' : record.kind === 'garage' ? 'Garage' : 'Lot'} · View parking`
                   : 'Show saved area'}
               </Text>
             </View>
-          </Pressable>
-          {record ? (
-            <IconButton
-              icon="arrow"
-              label={`Directions to ${title}`}
-              onPress={() => onParkingDirections(record)}
-              color={colors.surface}
-              style={{ width: 44, height: 44, backgroundColor: colors.action }}
-              disabled={record.sourceKind === 'sample'}
-            />
-          ) : null}
-        </View>
-        {managing ? (
-          <Pressable
+          </MotionPressable>
+          <MotionPressable
             accessibilityRole="button"
             accessibilityLabel={`Remove ${title} from ${tab === 'favorites' ? 'favorites' : 'recently viewed places'}`}
             accessibilityState={{ disabled }}
@@ -125,8 +115,8 @@ export function SavedPlaces({
             >
               Remove
             </Text>
-          </Pressable>
-        ) : null}
+          </MotionPressable>
+        </View>
         {!record ? (
           <Text style={ui.small}>
             This record isn’t in the loaded map data. It may be outside this
@@ -137,77 +127,130 @@ export function SavedPlaces({
     )
   }
   return (
-    <ParkingPage title="Saved places" subtitle="Your usual spots, one tap away">
-      <View style={ui.row}>
-        {(['home', 'work'] as const).map((kind) => (
-          <ParkingTile
-            key={kind}
-            title={kind === 'home' ? 'Home' : 'Work'}
-            subtitle={savedAddresses.addresses[kind]?.name ?? 'Set address'}
-            icon={kind}
-            disabled={!savedAddresses.ready}
-            onPress={() => {
-              const address = savedAddresses.addresses[kind]
-              if (address) onCenter(address.coordinate)
-              else {
-                setAddressError(null)
-                setAddressQuery('')
-                setEditing(kind)
-              }
-            }}
-          />
-        ))}
-      </View>
-      <View style={ui.row}>
-        <ParkingTile
-          title="Your car"
-          subtitle={
-            local.state.parked ? 'Show saved location' : 'Save where you parked'
-          }
-          icon="car-white"
-          disabled={disabled || locating}
-          onPress={
-            local.state.parked
-              ? () => {
+    <ParkingPage
+      title="Saved"
+      subtitle="Kept on this device only"
+      onClose={onClose}
+    >
+      <View style={styles.carCard}>
+        <View style={ui.row}>
+          <View style={styles.carBadge}>
+            <FigmaAsset name="car" size={24} />
+          </View>
+          <View style={ui.flex}>
+            <Text style={[ui.sectionTitle, styles.onBrand]}>Your car</Text>
+            <Text style={[ui.small, styles.onBrand]}>
+              {local.state.parked
+                ? `Saved ${dateLabel(local.state.parked.savedAt)} · this device only`
+                : 'Save where you parked · this device only'}
+            </Text>
+          </View>
+        </View>
+        {local.state.parked ? (
+          <>
+            <View style={[ui.row, { flexWrap: 'wrap', gap: 8 }]}>
+              <MotionPressable
+                accessibilityRole="button"
+                onPress={onDirections}
+                style={({ pressed }) => [
+                  styles.carAction,
+                  styles.walk,
+                  pressed && { opacity: 0.8 },
+                ]}
+              >
+                <Text style={[styles.actionText, { color: colors.brandDeep }]}>
+                  Walk back
+                </Text>
+                <FigmaAsset name="walk-back-arrow" size={18} />
+              </MotionPressable>
+              <MotionPressable
+                accessibilityRole="button"
+                onPress={() => {
                   const parked = local.state.parked
                   if (parked) onCenter(parked.coordinate)
-                }
-              : onSaveParked
-          }
-        />
-        <ParkingTile
-          title="Add a place"
-          subtitle="Find a spot to save"
-          icon="plus-small"
-          accent
-          onPress={onAddPlace}
-        />
-      </View>
-      {savedAddresses.error ? (
-        <Text accessibilityRole="alert" style={[ui.small, ui.error]}>
-          {savedAddresses.error}
-        </Text>
-      ) : null}
-      {savedAddresses.ready &&
-      (savedAddresses.addresses.home || savedAddresses.addresses.work) ? (
-        <View style={ui.row}>
-          {(['home', 'work'] as const).map((kind) =>
-            savedAddresses.addresses[kind] ? (
-              <Button
-                key={kind}
-                secondary
+                }}
+                style={({ pressed }) => [
+                  styles.carAction,
+                  styles.showMap,
+                  pressed && { opacity: 0.8 },
+                ]}
+              >
+                <Text style={[styles.actionText, styles.onBrand]}>
+                  Show on map
+                </Text>
+              </MotionPressable>
+            </View>
+            <View style={[ui.row, { flexWrap: 'wrap', gap: 16 }]}>
+              <MotionPressable
+                accessibilityRole="button"
+                disabled={disabled || locating}
+                accessibilityState={{ disabled: disabled || locating }}
+                onPress={onSaveParked}
+                style={styles.carLink}
+              >
+                <Text
+                  style={[
+                    styles.linkText,
+                    styles.onBrand,
+                    (disabled || locating) && { opacity: 0.55 },
+                  ]}
+                >
+                  {locating
+                    ? 'Finding your location…'
+                    : 'Replace with my location'}
+                </Text>
+              </MotionPressable>
+              <MotionPressable
+                accessibilityRole="button"
+                accessibilityLabel="Clear parked location"
+                disabled={disabled}
+                accessibilityState={{ disabled }}
+                style={styles.carLink}
                 onPress={() => {
-                  setAddressError(null)
-                  setAddressQuery('')
-                  setEditing(kind)
+                  const previous = local.state.parked
+                  void local.park(null).then((ok) => {
+                    if (ok)
+                      setToast({
+                        message: 'Parked location cleared',
+                        undo: () => {
+                          void local.restoreParked(previous)
+                          setToast(null)
+                        },
+                      })
+                  })
                 }}
               >
-                Edit {kind}
-              </Button>
-            ) : null,
-          )}
-        </View>
-      ) : null}
+                <Text
+                  style={[
+                    styles.linkText,
+                    styles.onBrand,
+                    disabled && { opacity: 0.55 },
+                  ]}
+                >
+                  Clear
+                </Text>
+              </MotionPressable>
+            </View>
+          </>
+        ) : (
+          <MotionPressable
+            accessibilityRole="button"
+            disabled={disabled || locating}
+            accessibilityState={{ disabled: disabled || locating }}
+            onPress={onSaveParked}
+            style={[
+              styles.carAction,
+              styles.walk,
+              (disabled || locating) && { opacity: 0.55 },
+            ]}
+          >
+            <Text style={[styles.actionText, { color: colors.brandDeep }]}>
+              {locating ? 'Finding your location…' : 'Save where I parked'}
+            </Text>
+          </MotionPressable>
+        )}
+      </View>
+      {locationError ? <Notice>{locationError}</Notice> : null}
       {editing ? (
         <ModalSheet
           title={`Set ${editing} address`}
@@ -292,84 +335,81 @@ export function SavedPlaces({
             selected={tab === 'recents'}
             onPress={() => setTab('recents')}
           >
-            Recent
+            Recently viewed
           </Choice>
-          {local.state[tab].length > 0 ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityState={{ selected: managing }}
-              onPress={() => setManaging(!managing)}
-              style={{
-                minHeight: 44,
-                justifyContent: 'center',
-                marginLeft: 'auto',
-              }}
-            >
-              <Text style={[ui.small, ui.link]}>
-                {managing ? 'Done' : 'Manage'}
-              </Text>
-            </Pressable>
-          ) : null}
         </View>
-        {local.state[tab].map(row)}
-        {local.status === 'ready' && local.state[tab].length === 0 ? (
-          <Text style={ui.body}>
-            {tab === 'favorites'
-              ? 'Star a parking location to save it here.'
-              : 'Your last 10 viewed parking locations will appear here.'}
-          </Text>
-        ) : null}
-        <View style={ui.divider} />
-        <Text style={ui.sectionTitle}>Where I parked</Text>
-        <Text style={ui.small}>
-          Saved on this device only. Saving uses your current location.
-        </Text>
-        {local.state.parked ? (
-          <>
-            <Text style={ui.body}>Parking location saved</Text>
-            <Button
-              secondary
-              onPress={() => {
-                const parked = local.state.parked
-                if (parked) onCenter(parked.coordinate)
-              }}
-            >
-              Show on map
-            </Button>
-            <Button onPress={onDirections}>Directions back</Button>
-            <Text style={ui.small}>
-              Directions share your start and saved location with the routing
-              provider. Opens walking directions in Google Maps.
+        <MotionView transitionKey={tab} style={{ gap: 16 }}>
+          {local.state[tab].map(row)}
+          {local.status === 'ready' && local.state[tab].length === 0 ? (
+            <Text style={ui.body}>
+              {tab === 'favorites'
+                ? 'Star a parking location to save it here.'
+                : 'Your last 10 viewed parking locations will appear here.'}
             </Text>
-            <Button
-              secondary
-              disabled={disabled}
-              onPress={() => {
-                const previous = local.state
-                void local.park(null).then((ok) => {
-                  if (ok)
-                    setToast({
-                      message: 'Parked location cleared',
-                      undo: () => {
-                        void local.restore(previous)
-                        setToast(null)
-                      },
-                    })
-                })
-              }}
-            >
-              Clear parked location
+          ) : null}
+        </MotionView>
+        <MotionPressable
+          accessibilityRole="button"
+          accessibilityState={{ expanded: showAddresses }}
+          onPress={() => setShowAddresses(!showAddresses)}
+          style={styles.carLink}
+        >
+          <Text style={[ui.small, ui.link]}>Saved addresses</Text>
+        </MotionPressable>
+        {showAddresses ? (
+          <>
+            <View style={ui.row}>
+              {(['home', 'work'] as const).map((kind) => (
+                <ParkingTile
+                  key={kind}
+                  title={kind === 'home' ? 'Home' : 'Work'}
+                  subtitle={
+                    savedAddresses.addresses[kind]?.name ?? 'Set address'
+                  }
+                  icon={kind}
+                  disabled={!savedAddresses.ready}
+                  onPress={() => {
+                    const address = savedAddresses.addresses[kind]
+                    if (address) onCenter(address.coordinate)
+                    else {
+                      setAddressError(null)
+                      setAddressQuery('')
+                      setEditing(kind)
+                    }
+                  }}
+                />
+              ))}
+            </View>
+            {savedAddresses.error ? (
+              <Text accessibilityRole="alert" style={[ui.small, ui.error]}>
+                {savedAddresses.error}
+              </Text>
+            ) : null}
+            {savedAddresses.ready &&
+            (savedAddresses.addresses.home || savedAddresses.addresses.work) ? (
+              <View style={ui.row}>
+                {(['home', 'work'] as const).map((kind) =>
+                  savedAddresses.addresses[kind] ? (
+                    <Button
+                      key={kind}
+                      secondary
+                      onPress={() => {
+                        setAddressError(null)
+                        setAddressQuery('')
+                        setEditing(kind)
+                      }}
+                    >
+                      Edit {kind}
+                    </Button>
+                  ) : null,
+                )}
+              </View>
+            ) : null}
+            <Button secondary onPress={onAddPlace}>
+              Find a place to save
             </Button>
           </>
         ) : null}
-        <Button disabled={disabled || locating} onPress={onSaveParked}>
-          {locating
-            ? 'Finding your location…'
-            : local.state.parked
-              ? 'Replace with my current location'
-              : 'Save where I parked'}
-        </Button>
-        {locationError ? <Notice>{locationError}</Notice> : null}
         {local.status === 'loading' ? (
           <Text style={ui.small}>Loading saved places…</Text>
         ) : null}
@@ -398,17 +438,54 @@ export function SavedPlaces({
 }
 
 const styles = StyleSheet.create({
-  content: { paddingBottom: 24, gap: 12 },
+  carCard: {
+    backgroundColor: colors.brand,
+    padding: 16,
+    borderRadius: 28,
+    gap: 14,
+  },
+  carBadge: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: '#FFF9F0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  onBrand: { color: colors.surface },
+  carAction: {
+    minHeight: 44,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 999,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  walk: { backgroundColor: colors.surface, flexGrow: 1 },
+  showMap: { backgroundColor: 'rgba(255,255,255,0.22)', flexGrow: 1 },
+  actionText: {
+    fontFamily: fonts.semibold,
+    fontSize: 17,
+    lineHeight: 20,
+    letterSpacing: -0.34,
+  },
+  carLink: { minHeight: 44, justifyContent: 'center' },
+  linkText: { fontFamily: fonts.bold, fontSize: 12, lineHeight: 16 },
+  content: { paddingBottom: 24, gap: 16 },
   savedRow: {
     padding: 12,
-    borderRadius: 20,
-    backgroundColor: colors.soft,
+    borderRadius: 28,
+    backgroundColor: colors.surface,
+    borderWidth: 2,
+    borderColor: colors.border,
     gap: 8,
   },
   badge: {
-    width: 56,
-    height: 56,
-    borderRadius: 14,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: colors.selected,
     alignItems: 'center',
     justifyContent: 'center',

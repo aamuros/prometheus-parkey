@@ -12,19 +12,30 @@ import type {
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { StyleSheet } from 'react-native'
 
-import parkingPinImage from '../../assets/images/parking-pin.png'
-import selectedParkingPinImage from '../../assets/images/parking-pin-selected.png'
+import parkingPinImage from '../../assets/figma/playful/mascot.png'
+import freePin from '../../assets/figma/playful/pin-free.png'
+import paidPin from '../../assets/figma/playful/pin-paid.png'
+import unknownPin from '../../assets/figma/playful/pin-unknown.png'
+import mapLabel from '../../assets/figma/playful/map-label.png'
+import navUp from '../../assets/figma/playful/nav-up.png'
+import selectedParkingPinImage from '../../assets/figma/playful/mascot.png'
 
 import { config } from './config'
-import { splitRoute } from './drive-math'
+import { routeBearing, splitRoute } from './drive-math'
 import { draftGeoJSON, parkingMapSources } from './map-data'
 import type { ParkingMapProps } from './map-types'
-import { mapColors } from './palette'
+import { mapColors, colors } from './palette'
+import { parkingLabelLayout, parkingMarkerLayout } from './map-marker-style'
 import { routeBounds } from './routing'
 import { useReducedMotion } from './use-reduced-motion'
 
 const parkingImages = {
   'parking-pin': parkingPinImage,
+  'pin-free': freePin,
+  'pin-paid': paidPin,
+  'pin-unknown': unknownPin,
+  'map-label': mapLabel,
+  'nav-up': navUp,
   'parking-pin-selected': selectedParkingPinImage,
 }
 
@@ -41,8 +52,8 @@ export default function NativeMap(props: ParkingMapProps) {
   const reduced = useReducedMotion()
   const [loaded, setLoaded] = useState(false)
   const records = useMemo(
-    () => parkingMapSources(props.records, props.selectedId),
-    [props.records, props.selectedId],
+    () => parkingMapSources(props.records, props.selectedId, props.featuredId),
+    [props.records, props.selectedId, props.featuredId],
   )
   const draft = useMemo(
     () => draftGeoJSON(props.draftPoints),
@@ -121,7 +132,7 @@ export default function NativeMap(props: ParkingMapProps) {
   return (
     <Map
       style={StyleSheet.absoluteFill}
-      mapStyle={config.mapStyle}
+      mapStyle={props.night ? config.nightMapStyle : config.mapStyle}
       attribution={false}
       logo={false}
       compass={false}
@@ -165,13 +176,19 @@ export default function NativeMap(props: ParkingMapProps) {
           id="route-casing"
           type="line"
           layout={{ 'line-cap': 'round', 'line-join': 'round' }}
-          paint={{ 'line-color': mapColors.casing, 'line-width': 10 }}
+          paint={{
+            'line-color': props.night ? '#17141A' : mapColors.casing,
+            'line-width': 10,
+          }}
         />
         <Layer
           id="route-line"
           type="line"
           layout={{ 'line-cap': 'round', 'line-join': 'round' }}
-          paint={{ 'line-color': mapColors.route, 'line-width': 6 }}
+          paint={{
+            'line-color': props.night ? '#25CAD3' : mapColors.route,
+            'line-width': 6,
+          }}
         />
       </GeoJSONSource>
       <GeoJSONSource
@@ -282,7 +299,7 @@ export default function NativeMap(props: ParkingMapProps) {
               50,
               27,
             ],
-            'circle-color': '#172B4D',
+            'circle-color': colors.brandDeep,
             'circle-blur': 0.5,
             'circle-opacity': 0.25,
             'circle-translate': [0, 2],
@@ -302,9 +319,9 @@ export default function NativeMap(props: ParkingMapProps) {
               50,
               24,
             ],
-            'circle-color': mapColors.facility,
+            'circle-color': colors.brandDeep,
             'circle-stroke-color': mapColors.casing,
-            'circle-stroke-width': 1.5,
+            'circle-stroke-width': 3,
             'circle-opacity': 1,
           }}
         />
@@ -325,18 +342,11 @@ export default function NativeMap(props: ParkingMapProps) {
           id="facilities"
           type="symbol"
           filter={['!', ['has', 'point_count']]}
-          layout={{
-            'icon-image': 'parking-pin',
-            'icon-size': 0.5,
-            'icon-anchor': 'bottom',
-            'icon-allow-overlap': true,
-            'icon-ignore-placement': true,
-            'symbol-z-order': 'source',
-            'symbol-sort-key': ['get', 'sortKey'],
-          }}
+          layout={parkingMarkerLayout(1 / 3)}
           paint={{
-            'icon-opacity': 1,
-            'icon-opacity-transition': { duration: 0 },
+            'icon-opacity': ['case', ['get', 'muted'], 0.65, 1],
+            'text-opacity': ['case', ['get', 'muted'], 0.65, 1],
+            'text-color': colors.surface,
           }}
         />
       </GeoJSONSource>
@@ -351,11 +361,20 @@ export default function NativeMap(props: ParkingMapProps) {
         }}
       >
         <Layer
+          id="selected-halo"
+          type="circle"
+          paint={{
+            'circle-radius': 46,
+            'circle-color': colors.brand,
+            'circle-opacity': 0.18,
+          }}
+        />
+        <Layer
           id="selected-facility"
           type="symbol"
           layout={{
             'icon-image': 'parking-pin-selected',
-            'icon-size': 0.6,
+            'icon-size': 1 / 3,
             'icon-anchor': 'bottom',
             'icon-allow-overlap': true,
             'icon-ignore-placement': true,
@@ -367,6 +386,12 @@ export default function NativeMap(props: ParkingMapProps) {
             'icon-opacity-transition': { duration: 0 },
           }}
         />
+        <Layer
+          id="selected-name"
+          type="symbol"
+          layout={parkingLabelLayout(1 / 3)}
+          paint={{ 'text-color': colors.surface }}
+        />
       </GeoJSONSource>
       {props.userLocation ? (
         <GeoJSONSource
@@ -377,7 +402,7 @@ export default function NativeMap(props: ParkingMapProps) {
             id="user-halo"
             type="circle"
             paint={{
-              'circle-radius': 16,
+              'circle-radius': props.navigation ? 50 : 32,
               'circle-color': mapColors.userHalo,
               'circle-opacity': 0.15,
             }}
@@ -386,12 +411,25 @@ export default function NativeMap(props: ParkingMapProps) {
             id="user-dot"
             type="circle"
             paint={{
-              'circle-radius': 6,
+              'circle-radius': props.navigation ? 26 : 10,
               'circle-color': mapColors.user,
               'circle-stroke-color': mapColors.casing,
               'circle-stroke-width': 3,
             }}
           />
+          {props.navigation ? (
+            <Layer
+              id="user-heading"
+              type="symbol"
+              layout={{
+                'icon-image': 'nav-up',
+                'icon-size': 1 / 3,
+                'icon-rotate': routeBearing(split?.remaining ?? []),
+                'icon-rotation-alignment': 'map',
+                'icon-allow-overlap': true,
+              }}
+            />
+          ) : null}
         </GeoJSONSource>
       ) : null}
       {props.parkedLocation ? (

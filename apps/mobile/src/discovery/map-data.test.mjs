@@ -4,7 +4,7 @@ import test from 'node:test'
 import { parkingMapSources } from './map-data.ts'
 import { sampleParking } from './sample-data.ts'
 
-test('cluster sources keep street lines and facility points separate without losing records', () => {
+test('cluster sources include one anchor per parking record while retaining street geometry', () => {
   const sources = parkingMapSources(sampleParking, null)
   assert.ok(sources.streets.features.length > 0)
   assert.ok(sources.facilities.features.length > 0)
@@ -19,10 +19,7 @@ test('cluster sources keep street lines and facility points separate without los
     ),
   )
   assert.equal(sources.selected.features.length, 0)
-  assert.equal(
-    sources.streets.features.length + sources.facilities.features.length,
-    sampleParking.length,
-  )
+  assert.equal(sources.facilities.features.length, sampleParking.length)
 })
 
 test('a selected pin renders independently above clusters without being counted twice', () => {
@@ -39,13 +36,13 @@ test('a selected pin renders independently above clusters without being counted 
   )
   assert.equal(
     Object.values(sources).flatMap((source) => source.features).length,
-    sampleParking.length,
+    sampleParking.length + sources.streets.features.length,
   )
   const street = sampleParking.find(
     (record) => record.geometry.type === 'LineString',
   )
   const streetSources = parkingMapSources(sampleParking, street.id)
-  assert.equal(streetSources.selected.features.length, 0)
+  assert.equal(streetSources.selected.features.length, 1)
   assert.equal(streetSources.streets.features[0].properties.selected, true)
 })
 
@@ -79,4 +76,46 @@ test('southern pins have higher draw priority and source ordering is stable acro
     pins,
   )
   assert.deepEqual(parkingMapSources([], null).facilities.features, [])
+})
+
+test('selected street keeps its line and gains a mascot anchor at its midpoint', () => {
+  const street = sampleParking.find(
+    (record) => record.geometry.type === 'LineString',
+  )
+  const sources = parkingMapSources(sampleParking, street.id)
+  assert.ok(
+    sources.streets.features.some((feature) => feature.id === street.id),
+  )
+  assert.deepEqual(sources.selected.features[0].geometry, {
+    type: 'Point',
+    coordinates:
+      street.geometry.coordinates[
+        Math.floor(street.geometry.coordinates.length / 2)
+      ],
+  })
+  assert.ok(
+    !sources.facilities.features.some((feature) => feature.id === street.id),
+  )
+})
+
+test('map fee bubbles use recorded values and mark missing fees without a free claim', () => {
+  const base = { ...sampleParking[0], fees: null, osmTags: {} }
+  const records = [
+    { ...base, id: 'free', osmTags: { fee: 'no' } },
+    { ...base, id: 'paid', osmTags: { fee: 'yes', charge: '₱40/hr' } },
+    { ...base, id: 'unknown', fees: 'Free after validation' },
+    { ...base, id: 'paid-unknown', osmTags: { fee: 'yes', charge: 'unknown' } },
+  ]
+  const sources = parkingMapSources(records, null, 'free')
+  const properties = Object.fromEntries(
+    sources.facilities.features.map((f) => [f.id, f.properties]),
+  )
+  assert.equal(properties.free.label, 'Free')
+  assert.equal(properties.free.featured, true)
+  assert.equal(properties.paid.label, '₱40/hr')
+  assert.equal(properties.paid.free, false)
+  assert.equal(properties.unknown.label, 'Fee ?')
+  assert.equal(properties.unknown.knownFee, false)
+  assert.equal(properties['paid-unknown'].label, 'Paid')
+  assert.equal(sources.facilities.features.length, records.length)
 })

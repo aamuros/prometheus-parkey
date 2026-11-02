@@ -90,3 +90,57 @@ Verified in Playwright against Expo web:
 The mobile typecheck, targeted ESLint/Prettier checks, and 17 unit tests for
 navigation, sheet bounds, and saved-address validation passed. No native device
 or emulator was used for this follow-up verification.
+
+## Search, saved places, privacy, night navigation, and edge states
+
+The 18 supplied nodes below update the Expo app and its React Native Web renderer.
+The operator web app stays independent. The original map, geocoding, routing,
+favorites, recent places, device drafts, and permission flows supply real data;
+Figma’s example records, counts, keyboard, and system status bar are not copied.
+
+| Figma node | Implementation                                                                                              |
+| ---------- | ----------------------------------------------------------------------------------------------------------- |
+| `59:2053`  | Location-off recovery in `explore.tsx`; native settings link and browser settings guidance                  |
+| `59:1877`  | Filter-hidden recovery naming the active filter and resetting to All                                        |
+| `59:1704`  | Zoom recovery; parking markers and the nearby list stay hidden below queryable zoom                         |
+| `59:1539`  | Nonblocking offline banner with connectivity recheck; saved places and car stay available                   |
+| `58:1249`  | Reduced-motion-aware nearby skeleton cards in `nearby-card.tsx`                                             |
+| `58:1236`  | Shared `state-card.tsx`: badge, title, explanation, and one recovery action                                 |
+| `59:1367`  | Loading cards and toast; existing results remain visible while refreshing                                   |
+| `59:1240`  | Search empty state and Clear search returning to recent searches                                            |
+| `51:892`   | System keyboard stand-in represented by the native TextInput keyboard                                       |
+| `52:1130`  | Search result badges, names, addresses, chevrons, and Photon disclosure                                     |
+| `53:1163`  | You: actual saved/viewed/draft counts, private drafts with deletion, privacy, reporting status, credits     |
+| `54:1246`  | Night navigation: dark live map, turn card, turquoise route, ETA, Next spot, End, light system status bar   |
+| `54:1147`  | One-time directions dialog with shield, explanation, Cancel, and Continue                                   |
+| `52:888`   | Focused search expands inside the sheet; current location and recent searches precede results               |
+| `53:1064`  | Saved: car first, Walk back, Show on map, replace/clear, favorites/recently viewed, removal with Undo       |
+| `60:1589`  | Edge-state annotations applied to the shared state card and recovery actions                                |
+| `51:959`   | Interaction annotations: three-character search, six-result cap, local data, direct Go and one-time consent |
+| `51:891`   | Original exported chevron used in search and credits rows                                                   |
+
+New icons are original Figma SVG exports with 3× PNG renderings bundled locally.
+Night navigation follows dark system appearance or local time from 18:00 to 06:00.
+The map uses the existing provider’s verified dark style; a public
+`EXPO_PUBLIC_NIGHT_MAP_STYLE_URL` can override it. Both renderers keep the live
+route and location instead of rendering the Figma map illustration.
+
+Expo Network `~58.0.4`, the version listed by the installed Expo SDK 58, supplies
+native and web connectivity events. Retry checks connectivity before reloading
+map data, preserving the current map when the device is still offline. This does
+not add a map-tile download cache. An unavailable tile or backend request is not
+mislabelled as a device-wide offline condition.
+
+Saved addresses remain available below the main Saved content. Draft deletion
+persists before removing the row, storage errors stay visible, reporting badges
+reflect the configured integrations, and Cancel never records routing consent.
+Browser location settings cannot be opened programmatically, so that action
+shows platform guidance and an explicit retry. Native permissions are checked
+without prompting at launch and again when the app returns from settings.
+
+Verification for this pass: `pnpm typecheck`, `pnpm lint`, `pnpm format:check`,
+`pnpm build:web`, and 44 targeted unit tests passed. All 53 playful asset imports
+resolve; the 12 new original SVGs and their 3× PNG dimensions were checked.
+No browser, emulator, native build, or live navigation flow was run. Visual
+parity remains unverified. Native development builds must include the newly
+added Expo Network module.

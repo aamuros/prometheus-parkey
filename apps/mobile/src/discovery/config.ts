@@ -5,6 +5,9 @@ export const config = {
   mapStyle:
     process.env.EXPO_PUBLIC_MAP_STYLE_URL ||
     'https://tiles.openfreemap.org/styles/positron',
+  nightMapStyle:
+    process.env.EXPO_PUBLIC_NIGHT_MAP_STYLE_URL ||
+    'https://tiles.openfreemap.org/styles/dark',
   routingUrl:
     process.env.EXPO_PUBLIC_OSRM_URL ||
     (process.env.NODE_ENV === 'development'

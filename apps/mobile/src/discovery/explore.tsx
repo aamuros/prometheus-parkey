@@ -20,9 +20,15 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native'
+import { StatusBar } from 'expo-status-bar'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
+import { discoveryState } from './discovery-state'
+import { StateCard } from './state-card'
+import { useConnectivity } from './use-connectivity'
+import { ArrivalCelebration } from './arrival-celebration'
 import { BottomNavigation, TAB_BAR_HEIGHT } from './bottom-navigation'
+import { NearbyCard, NearbyLoading } from './nearby-card'
 import { ParkingProfile } from './parking-profile'
 import { ContributionForm } from './contribution-form'
 import { readContributions, writeContributions } from './contributions'
@@ -55,7 +61,7 @@ import ParkingMap from './parking-map'
 import type { CameraTarget } from './map-types'
 import { parkingDestination } from './parking-detail-data'
 import { ParkingDetails } from './parking-details'
-import { PARKING_ROW_HEIGHT, ParkingRow } from './parking-row'
+import { ParkingRow } from './parking-row'
 import {
   developmentSamplesEnabled,
   millisecondsToNextMinute,
@@ -66,6 +72,8 @@ import { nextParking } from './drive-math'
 import { useDriveNavigation } from './use-drive-navigation'
 import { sampleParking } from './sample-data'
 import { DestinationSearch } from './search'
+import { FigmaAsset } from './figma-assets'
+import { ModalSheet } from './sheets'
 import { discoveryCameraPadding, stepSheet } from './sheet-state'
 import type { SheetPosition } from './sheet-state'
 import { fonts } from './typography'
@@ -89,6 +97,8 @@ const EMPTY_POINTS: Coordinate[] = []
 
 export default function Explore() {
   const insets = useSafeAreaInsets()
+  const connectivity = useConnectivity()
+  const [locationSettingsOpen, setLocationSettingsOpen] = useState(false)
   const { height: screenHeight } = useWindowDimensions()
   const [viewport, setViewport] = useState(PILOT_VIEWPORT)
   const navigation = useNavigation(routeExited)
@@ -124,10 +134,32 @@ export default function Explore() {
     [updateNavigation, closeNavigation, nav.center, nav.selectedId],
   )
   const changeSheetPosition = useCallback(
-    (position: SheetPosition) => updateNavigation({ position }),
+    (position: SheetPosition) => {
+      if (position === 'compact') {
+        Keyboard.dismiss()
+        updateNavigation({ position, searching: false })
+      } else updateNavigation({ position })
+    },
     [updateNavigation],
   )
   const list = useRef<FlatList<DiscoveryParking>>(null)
+  const browseScrollOffset = useRef(0)
+  const parkingScrollOffset = useRef(0)
+  const getBrowseScrollOffset = useCallback(
+    () => browseScrollOffset.current,
+    [],
+  )
+  const getParkingScrollOffset = useCallback(
+    () => parkingScrollOffset.current,
+    [],
+  )
+  const [sheetContent, setSheetContent] = useState<{
+    id: string
+    height: number
+  } | null>(null)
+  useEffect(() => {
+    parkingScrollOffset.current = 0
+  }, [nav.selectedId])
   const [toast, setToast] = useState<{
     message: string
     undo: () => void
@@ -142,10 +174,8 @@ export default function Explore() {
     () => updateNavigation({ consent: true }),
     () => closeNavigation({ consent: false }),
   )
-  const [sheetHeight, setSheetHeight] = useState(168 + insets.bottom)
-  const [measuredTabHeight, setMeasuredTabHeight] = useState(
-    TAB_BAR_HEIGHT + Math.max(insets.bottom, 16),
-  )
+  const [sheetHeight, setSheetHeight] = useState(116 + insets.bottom)
+  const [menuOpen, setMenuOpen] = useState(false)
   const [drawingPanelHeight, setDrawingPanelHeight] = useState(0)
   const [topOverlayHeight, setTopOverlayHeight] = useState(0)
   const [routeTarget, setRouteTarget] = useState<{
@@ -212,7 +242,7 @@ export default function Explore() {
     cancel: cancelRoute,
     ...routeState
   } = useRoute()
-  const [fromMapCenter, setFromMapCenter] = useState(false)
+  const [parkedHere, setParkedHere] = useState(false)
   const [rejected, setRejected] = useState<ReadonlySet<string>>(() => new Set())
   const [resumeTarget, setResumeTarget] = useState<typeof routeTarget>(null)
   const [navigationMessage, setNavigationMessage] = useState<string | null>(
@@ -307,7 +337,7 @@ export default function Explore() {
   )
   const visible = useMemo(
     () =>
-      feeFilter === 'applies'
+      feeFilter !== 'all'
         ? partitions.matched
         : [...partitions.matched, ...partitions.unknown],
     [partitions, feeFilter],
@@ -322,8 +352,8 @@ export default function Explore() {
     [destination, currentLocation, viewport],
   )
   const ranked = useMemo(
-    () => rankParking(visible, reference.coordinate),
-    [visible, reference.coordinate],
+    () => (parking.canQuery ? rankParking(visible, reference.coordinate) : []),
+    [visible, reference.coordinate, parking.canQuery],
   )
   const farFromCenter =
     distanceMeters(
@@ -334,6 +364,64 @@ export default function Explore() {
       nav.center,
     ) > 600
   const filteredOut = parking.canQuery && records.length > 0 && !visible.length
+  const browseState = discoveryState({
+    canQuery: parking.canQuery,
+    locationDenied: location.status === 'denied',
+    filteredOut,
+    loading:
+      !samples &&
+      (parking.status === 'loading' ||
+        (mapStatus === 'loading' && !records.length)),
+    count: visible.length,
+  })
+  const stateCard =
+    browseState === 'zoomed-out' ? (
+      <StateCard
+        icon="zoom-in-brand"
+        title="Zoom in to see parking"
+        body="Spots appear once the map is a little closer."
+        action="Zoom in"
+        onAction={() =>
+          center([
+            (viewport.west + viewport.east) / 2,
+            (viewport.south + viewport.north) / 2,
+          ])
+        }
+      />
+    ) : browseState === 'location-off' ? (
+      <StateCard
+        icon="location-off"
+        title="Location is off"
+        body="Turn it on to see parking near you, or search for a place."
+        action="Open settings"
+        onAction={() => {
+          if (Platform.OS === 'web') setLocationSettingsOpen(true)
+          else
+            void Linking.openSettings().catch(() =>
+              setLocationSettingsOpen(true),
+            )
+        }}
+      />
+    ) : browseState === 'filtered' ? (
+      <StateCard
+        icon="filter-brand"
+        title={
+          feeFilter === 'free'
+            ? 'No free spots in view'
+            : `No ${filter === 'garage' ? 'garages' : 'street spots'} in view`
+        }
+        body={`The ${feeFilter === 'free' ? 'Free' : filter === 'garage' ? 'Garage' : 'Street'} filter is hiding other mapped spots nearby.`}
+        action="Show all spots"
+        onAction={() => updateNavigation({ filter: 'all', fees: 'all' })}
+      />
+    ) : browseState === 'empty' ? (
+      <StateCard
+        title="No parking mapped here yet"
+        body="Know a parking spot in this area? Save a private draft."
+        action="Add a spot"
+        onAction={() => startContribution()}
+      />
+    ) : null
   const resultsTitle = destination
     ? `Parking near ${destination.name}`
     : 'Parking in this area'
@@ -482,6 +570,7 @@ export default function Explore() {
       confirmed ? 'replace' : 'push',
     )
     setRejected(new Set())
+    setParkedHere(false)
     setNavigationMessage(null)
     void loadRoute(
       (origin) => {
@@ -495,9 +584,8 @@ export default function Explore() {
       },
       async () => {
         const origin = await location.locate()
-        setFromMapCenter(!origin)
         directNavigation.request(origin !== null)
-        return origin ?? target.coordinate
+        return origin
       },
     )
   }
@@ -566,11 +654,13 @@ export default function Explore() {
     setRouteTarget(null)
     updateNavigation({
       filter: next === filter ? 'all' : next,
+      fees: 'all',
       selectedId: null,
       route: false,
     })
   }
-  function startContribution(record?: DiscoveryParking) {
+  function startContribution(record?: DiscoveryParking, restrictions = '') {
+    if (nav.route) drive.stop(false)
     clearRoute()
     setRouteTarget(null)
     if (record) {
@@ -582,7 +672,7 @@ export default function Explore() {
         geometry: record.geometry,
         side: record.side,
         name: record.name,
-        restrictions: '',
+        restrictions,
         hours: record.hours ?? '',
         fees: record.fees ?? '',
         photoUri: null,
@@ -727,24 +817,15 @@ export default function Explore() {
         ? 'Couldn’t get your location. Check location services and try again.'
         : null
 
-  const discoveryVisible =
-    !searchActive && !drawing && !nav.route && panel === null
-  const tabsVisible =
-    !nav.route &&
-    !drawing &&
-    !searchActive &&
-    (!selected || panel === 'saved' || panel === 'you') &&
-    (panel === null || panel === 'saved' || panel === 'you')
-  const tabHeight = tabsVisible ? measuredTabHeight : 0
-  const controlsVisible =
-    screenHeight - sheetHeight - tabHeight > topOverlayHeight + 122
+  const discoveryVisible = !drawing && !nav.route && panel === null
+  const controlsVisible = screenHeight - sheetHeight > topOverlayHeight + 122
   const cameraBottom =
     routeTarget && nav.route
       ? routeHeight
       : drawing
         ? drawingPanelHeight
         : discoveryVisible
-          ? sheetHeight + tabHeight
+          ? sheetHeight
           : 0
   const cameraPadding = discoveryCameraPadding(
     screenHeight,
@@ -769,11 +850,123 @@ export default function Explore() {
     })
   }
 
+  const searchHeader = (
+    <View
+      style={{
+        paddingHorizontal: 16,
+        paddingBottom: 14,
+        flex: searchActive ? 1 : undefined,
+      }}
+    >
+      <DestinationSearch
+        layout="sheet"
+        fillSheet
+        placeholder="Where to park today?"
+        onSaved={() => setPanel('saved')}
+        query={nav.query}
+        active={searchActive}
+        onQuery={(query) =>
+          updateNavigation({ query, searchPoint: null }, 'replace')
+        }
+        onLocate={() => {
+          updateNavigation({
+            searching: false,
+            query: '',
+            searchPoint: null,
+            selectedId: null,
+            position: 'medium',
+          })
+          void location.locate().then((point) => {
+            if (point) {
+              clearDestination()
+              updateNavigation({ center: point })
+            }
+          })
+        }}
+        center={target.coordinate}
+        onActive={(active) => {
+          if (active)
+            updateNavigation({
+              searching: true,
+              position: 'expanded',
+            })
+          else
+            closeNavigation({
+              searching: false,
+              query: nav.query,
+              searchPoint: nav.searchPoint,
+            })
+        }}
+        onSelect={(found) => {
+          const matches = partitionParking(
+            [...parking.knownRecords, ...previews],
+            filter,
+            feeFilter,
+          ).matched
+          const closest = rankParking(matches, found.coordinate)[0]
+          const focus =
+            closest &&
+            distanceMeters(anchor(closest.geometry), found.coordinate) <= 1500
+              ? anchor(closest.geometry)
+              : found.coordinate
+          updateNavigation({
+            searching: false,
+            query: found.name,
+            searchPoint: found.coordinate,
+            selectedId: null,
+            center: [focus[0], focus[1]],
+            position: 'medium',
+          })
+        }}
+      />
+    </View>
+  )
+  const filterStrip = (
+    <ScrollView
+      horizontal
+      style={styles.filterStrip}
+      testID="parking-filters"
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.filters}
+    >
+      <Choice
+        selected={filter === 'all' && feeFilter === 'all'}
+        onPress={() => {
+          changeFilter('all')
+          setFeeFilter('all')
+        }}
+      >
+        All
+      </Choice>
+      <Choice
+        selected={feeFilter === 'free'}
+        onPress={() => {
+          changeFilter('all')
+          setFeeFilter('free')
+        }}
+      >
+        Free
+      </Choice>
+      <Choice
+        selected={filter === 'street'}
+        onPress={() => changeFilter('street')}
+      >
+        Street
+      </Choice>
+      <Choice
+        selected={filter === 'garage'}
+        onPress={() => changeFilter('garage')}
+      >
+        Garage
+      </Choice>
+    </ScrollView>
+  )
   return (
     <View
       testID={mapStatus === 'ready' ? 'discovery-map-ready' : 'discovery-map'}
       style={styles.screen}
     >
+      <StatusBar style="dark" />
       <View
         ref={mapInterface}
         testID="map-interface"
@@ -787,7 +980,12 @@ export default function Explore() {
         {topOverlayHeight > 0 ? (
           <ParkingMap
             key={mapRevision}
-            records={visible}
+            records={parking.canQuery ? visible : []}
+            featuredId={
+              parking.canQuery && currentLocation
+                ? (ranked[0]?.id ?? null)
+                : null
+            }
             selectedId={
               (nav.route ? routeTarget?.parking?.id : null) ??
               selected?.id ??
@@ -865,10 +1063,7 @@ export default function Explore() {
                 distance={drive.progress?.maneuverDistance ?? 0}
                 rerouting={drive.rerouting}
               />
-            ) : nav.route ||
-              selected ||
-              panel !== null ? null : sheet.position === 'expanded' &&
-              discoveryVisible ? null : drawing ? (
+            ) : nav.route || selected || panel !== null ? null : drawing ? (
               <View style={[styles.drawHeader, ui.shadow]}>
                 <View style={ui.flex}>
                   <Text style={ui.heading}>Mark the parking location</Text>
@@ -888,124 +1083,51 @@ export default function Explore() {
                   }}
                 />
               </View>
-            ) : (
-              <DestinationSearch
-                onSaved={() => setPanel('saved')}
-                query={nav.query}
-                active={searchActive}
-                onQuery={(query) =>
-                  updateNavigation({ query, searchPoint: null }, 'replace')
-                }
-                onLocate={() => {
-                  updateNavigation({
-                    searching: false,
-                    query: '',
-                    searchPoint: null,
-                    selectedId: null,
-                    position: 'medium',
-                  })
-                  void location.locate().then((point) => {
-                    if (point) {
-                      clearDestination()
-                      updateNavigation({ center: point })
+            ) : null}
+          </View>
+          {connectivity.offline &&
+          discoveryVisible &&
+          !selected &&
+          !searchActive ? (
+            <View
+              accessibilityLiveRegion="polite"
+              style={[styles.offlineBanner, ui.shadow]}
+            >
+              <View style={styles.offlineBadge}>
+                <FigmaAsset name="offline" size={20} />
+              </View>
+              <View style={ui.flex}>
+                <Text style={ui.heading}>You’re offline</Text>
+                <Text style={ui.small}>
+                  Saved places and your car are still available.
+                </Text>
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => {
+                  void connectivity.recheck().then((online) => {
+                    if (online) {
+                      setRevision((value) => value + 1)
+                      setMapRevision((value) => value + 1)
                     }
                   })
                 }}
-                center={target.coordinate}
-                onActive={(active) => {
-                  if (active) updateNavigation({ searching: true })
-                  else
-                    closeNavigation({
-                      searching: false,
-                      query: nav.query,
-                      searchPoint: nav.searchPoint,
-                    })
-                }}
-                onSelect={(found) => {
-                  const matches = partitionParking(
-                    [...parking.knownRecords, ...previews],
-                    filter,
-                    feeFilter,
-                  ).matched
-                  const closest = rankParking(matches, found.coordinate)[0]
-                  const focus =
-                    closest &&
-                    distanceMeters(
-                      anchor(closest.geometry),
-                      found.coordinate,
-                    ) <= 1500
-                      ? anchor(closest.geometry)
-                      : found.coordinate
-                  updateNavigation({
-                    searching: false,
-                    query: found.name,
-                    searchPoint: found.coordinate,
-                    selectedId: null,
-                    center: [focus[0], focus[1]],
-                    position: 'medium',
-                  })
-                }}
-              />
-            )}
-          </View>
-          {!searchActive &&
-          !drawing &&
-          !selected &&
-          !nav.route &&
-          sheet.position !== 'expanded' ? (
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.filters}
+                style={{ minHeight: 44, justifyContent: 'center' }}
+              >
+                <Text style={[ui.small, ui.link]}>Try again</Text>
+              </Pressable>
+            </View>
+          ) : browseState === 'loading' &&
+            discoveryVisible &&
+            !selected &&
+            !searchActive ? (
+            <View
+              accessibilityLiveRegion="polite"
+              style={[styles.loadingToast, ui.shadow]}
             >
-              <Choice
-                selected={filter === 'all'}
-                onPress={() => {
-                  changeFilter('all')
-                  setFeeFilter('all')
-                }}
-              >
-                All parking
-              </Choice>
-              <Choice
-                selected={filter === 'street'}
-                onPress={() => changeFilter('street')}
-              >
-                Street parking
-              </Choice>
-              <Choice
-                selected={filter === 'facilities'}
-                onPress={() => changeFilter('facilities')}
-              >
-                Lots & garages
-              </Choice>
-              <Choice
-                selected={filter === 'lot'}
-                onPress={() => changeFilter('lot')}
-              >
-                Lots
-              </Choice>
-              <Choice
-                selected={filter === 'garage'}
-                onPress={() => changeFilter('garage')}
-              >
-                Garages
-              </Choice>
-              <Choice
-                selected={feeFilter === 'applies'}
-                onPress={() => {
-                  setFeeFilter(feeFilter === 'all' ? 'applies' : 'all')
-                  track({
-                    name: 'filter_used',
-                    filter: 'fees',
-                    value: feeFilter === 'all' ? 'applies' : 'all',
-                  })
-                  setSelected(null)
-                }}
-              >
-                Fee applies
-              </Choice>
-            </ScrollView>
+              <View style={styles.loadingDot} />
+              <Text style={ui.small}>Finding spots near you…</Text>
+            </View>
           ) : null}
           {samples ? (
             <View style={styles.warning}>
@@ -1076,18 +1198,36 @@ export default function Explore() {
           ) : null}
         </View>
 
-        {discoveryVisible && sheet.position !== 'expanded' ? (
+        {discoveryVisible &&
+        !selected &&
+        !searchActive &&
+        sheet.position !== 'expanded' ? (
+          <View style={[styles.filterOverlay, { bottom: sheetHeight + 12 }]}>
+            {filterStrip}
+          </View>
+        ) : null}
+        {discoveryVisible && !searchActive && sheet.position !== 'expanded' ? (
           <>
             {controlsVisible ? (
               <View
                 style={[
                   styles.controls,
-                  { bottom: sheetHeight + tabHeight + 12 },
+                  { bottom: sheetHeight + (selected ? 12 : 72) },
                 ]}
               >
                 <IconButton
-                  style={ui.shadow}
+                  style={[
+                    ui.shadow,
+                    {
+                      backgroundColor: colors.surface,
+                      width: 56,
+                      height: 56,
+                      borderWidth: 2,
+                      borderColor: colors.border,
+                    },
+                  ]}
                   icon="locate"
+                  color={colors.ink}
                   label="Center on my location"
                   disabled={location.status === 'locating'}
                   onPress={centerOnMyLocation}
@@ -1099,12 +1239,12 @@ export default function Explore() {
                 style={[
                   styles.bottom,
                   {
-                    bottom: sheetHeight + tabHeight + 8,
-                    right: controlsVisible ? 80 : 16,
+                    bottom: sheetHeight + 140,
+                    right: 16,
                   },
                 ]}
               >
-                {mapStatus === 'error' ? (
+                {mapStatus === 'error' && !connectivity.offline ? (
                   <StatusMessage
                     message="The map couldn’t load. Check your connection."
                     onRetry={() => {
@@ -1113,7 +1253,9 @@ export default function Explore() {
                     }}
                   />
                 ) : null}
-                {parking.status === 'error' && !samples ? (
+                {parking.status === 'error' &&
+                !samples &&
+                !connectivity.offline ? (
                   <StatusMessage
                     message={parkingError}
                     onRetry={() => setRevision((current) => current + 1)}
@@ -1173,9 +1315,15 @@ export default function Explore() {
             </Button>
           </View>
         ) : null}
+        {nav.route && drive.phase === 'arrived' ? <ArrivalCelebration /> : null}
         {navigating && !drive.following ? (
-          <View style={[styles.controls, { bottom: routeHeight + 20 }]}>
-            <Button onPress={drive.recenter}>Re-center</Button>
+          <View style={[styles.controls, { bottom: routeHeight + 40 }]}>
+            <IconButton
+              icon="locate"
+              label="Re-center map"
+              onPress={drive.recenter}
+              style={ui.shadow}
+            />
           </View>
         ) : null}
         {routeTarget && nav.route ? (
@@ -1192,17 +1340,29 @@ export default function Explore() {
               drive.message ??
               (drive.phase === 'arrived' ? local.error : null)
             }
-            fromMapCenter={fromMapCenter}
             remainingDistance={drive.progress?.remainingDistance}
             remainingDuration={drive.progress?.remainingDuration}
             saving={local.busy || location.status === 'locating'}
+            parked={parkedHere}
+            onAnswer={
+              routeTarget.parking
+                ? (answer) => {
+                    const record = routeTarget.parking
+                    if (record)
+                      startContribution(
+                        record,
+                        `Maximum stay: ${answer === 'No limit' ? 'No time limit' : answer}`,
+                      )
+                  }
+                : null
+            }
             onStart={() => {
               setNavigationMessage(null)
               navigationViewportPrivate.current = true
               drive.start()
             }}
             onPark={() => {
-              if (saving.current) return
+              if (saving.current || parkedHere) return
               saving.current = true
               setNavigationMessage(null)
               void location
@@ -1214,13 +1374,21 @@ export default function Explore() {
                     )
                     return
                   }
+                  const previous = local.state.parked
                   if (await local.park(point)) {
-                    drive.stop(false)
-                    clearRoute()
-                    updateNavigation(
-                      { route: false, selectedId: null },
-                      'replace',
-                    )
+                    setParkedHere(true)
+                    track({ name: 'parked_spot_saved' })
+                    setToast({
+                      message: 'Saved where you parked',
+                      undo: () => {
+                        void local.restoreParked(previous).then((saved) => {
+                          if (saved) {
+                            setParkedHere(false)
+                            setToast(null)
+                          }
+                        })
+                      },
+                    })
                   }
                 })
                 .finally(() => {
@@ -1238,6 +1406,7 @@ export default function Explore() {
                 ? () => {
                     const current = routeTarget.parking
                     if (!current) return
+                    setParkedHere(false)
                     setRejected(new Set([...rejected, current.id]))
                     const next = nextParking(
                       parking.knownRecords,
@@ -1274,19 +1443,6 @@ export default function Explore() {
             }
             onHeightChange={setRouteHeight}
             onClose={endNavigation}
-            onDetails={
-              routeTarget.parking
-                ? () => {
-                    drive.stop(false)
-                    clearRoute()
-                    updateNavigation({
-                      route: false,
-                      selectedId: routeTarget.parking?.id ?? null,
-                      center: routeTarget.coordinate,
-                    })
-                  }
-                : null
-            }
             onRetry={() =>
               void loadRoute(
                 routeTarget.coordinate,
@@ -1336,24 +1492,44 @@ export default function Explore() {
         {discoveryVisible ? (
           <DiscoverySheet
             position={sheet.position}
-            bottom={tabHeight}
-            overlayHeight={topOverlayHeight}
-            accessory={
-              !selected && !controlsVisible ? (
-                <MapAttribution onPress={() => setPanel('info')} />
-              ) : undefined
+            getScrollOffset={
+              selected ? getParkingScrollOffset : getBrowseScrollOffset
             }
+            contentHeight={
+              selected && sheetContent?.id === selected.id
+                ? sheetContent.height
+                : 0
+            }
+            keyboardAware={searchActive}
+            bottom={!selected && !searchActive ? TAB_BAR_HEIGHT + 12 : 0}
+            previewHeight={
+              !selected && !searchActive ? (stateCard ? 180 : 124) : 0
+            }
+            header={!selected ? searchHeader : undefined}
+            overlayHeight={topOverlayHeight}
             selected={!!selected}
             title={selected ? parkingTitle(selected) : resultsTitle}
             summary={`${visible.length} mapped ${visible.length === 1 ? 'location' : 'locations'} · ${filter === 'all' ? 'all parking' : filter === 'facilities' ? 'lots & garages' : filter === 'lot' ? 'lots' : filter === 'garage' ? 'garages' : 'street parking'}`}
             onPositionChange={changeSheetPosition}
             onHeightChange={setSheetHeight}
-            onClose={() => setSelected(null)}
+            onClose={() =>
+              selected ? setSelected(null) : changeSheetPosition('compact')
+            }
           >
             {selected ? (
               <ParkingDetails
                 key={selected.id}
                 parking={selected}
+                onContentHeightChange={(height) =>
+                  setSheetContent((current) =>
+                    current?.id === selected.id && current.height === height
+                      ? current
+                      : { id: selected.id, height },
+                  )
+                }
+                onScrollOffsetChange={(offset) => {
+                  parkingScrollOffset.current = offset
+                }}
                 now={now}
                 onAddDetails={() => startContribution(selected)}
                 location={currentLocation}
@@ -1367,8 +1543,45 @@ export default function Explore() {
                 onDirections={() => startDirections(selected)}
               />
             ) : null}
+            {!selected && !searchActive && sheet.position !== 'expanded' ? (
+              browseState === 'loading' ? (
+                <NearbyLoading />
+              ) : stateCard ? (
+                <ScrollView
+                  style={ui.sheetScroll}
+                  contentContainerStyle={{
+                    paddingHorizontal: 16,
+                    paddingBottom: 8,
+                  }}
+                >
+                  {stateCard}
+                </ScrollView>
+              ) : (
+                <FlatList
+                  horizontal
+                  data={ranked}
+                  keyExtractor={(record) => record.id}
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.nearbyStrip}
+                  renderItem={({ item: record }) => (
+                    <NearbyCard
+                      parking={record}
+                      location={currentLocation}
+                      now={now}
+                      onPress={() => select(record.id)}
+                      onGo={() => startDirections(record)}
+                    />
+                  )}
+                />
+              )
+            ) : null}
             <View
-              style={[ui.flex, selected && { display: 'none' }]}
+              style={[
+                ui.flex,
+                (selected || searchActive || sheet.position !== 'expanded') && {
+                  display: 'none',
+                },
+              ]}
               onFocus={(event) => {
                 if (
                   Platform.OS !== 'web' ||
@@ -1386,80 +1599,83 @@ export default function Explore() {
             >
               <FlatList
                 ref={list}
+                onScroll={({ nativeEvent }) => {
+                  browseScrollOffset.current = nativeEvent.contentOffset.y
+                }}
+                scrollEventThrottle={16}
+                nestedScrollEnabled
                 data={ranked}
                 keyExtractor={(record) => record.id}
-                style={ui.flex}
-                scrollEnabled={sheet.position === 'expanded'}
+                onScrollToIndexFailed={({ averageItemLength, index }) =>
+                  list.current?.scrollToOffset({
+                    offset: averageItemLength * index,
+                    animated: false,
+                  })
+                }
+                style={[ui.sheetScroll, ui.flex]}
+                scrollEnabled={sheet.position !== 'compact'}
                 keyboardShouldPersistTaps="handled"
-                getItemLayout={(_, index) => ({
-                  length: PARKING_ROW_HEIGHT,
-                  offset: PARKING_ROW_HEIGHT * index,
-                  index,
-                })}
-                contentContainerStyle={{ paddingHorizontal: 16 }}
+                contentContainerStyle={{ paddingBottom: 16 }}
                 ListHeaderComponent={
-                  locationMessage ||
-                  mapStatus === 'error' ||
-                  (parking.status === 'error' && !samples) ? (
-                    <StatusMessage
-                      message={
-                        locationMessage ??
-                        (mapStatus === 'error'
-                          ? 'The map couldn’t load.'
-                          : parkingError)
-                      }
-                      onRetry={() => {
-                        if (locationMessage) {
-                          centerOnMyLocation()
-                          return
+                  <View style={styles.sheetContent}>
+                    <View style={styles.resultsHeading}>
+                      <Text accessibilityRole="header" style={ui.sectionTitle}>
+                        {resultsTitle}
+                      </Text>
+                      <Text style={ui.small}>
+                        {visible.length} mapped{' '}
+                        {visible.length === 1 ? 'location' : 'locations'}
+                      </Text>
+                    </View>
+                    {browseState === 'location-off' && ranked.length > 0
+                      ? stateCard
+                      : null}
+                    {location.status === 'error' ||
+                    (!connectivity.offline &&
+                      (mapStatus === 'error' ||
+                        (parking.status === 'error' && !samples))) ? (
+                      <StatusMessage
+                        message={
+                          location.status === 'error'
+                            ? (locationMessage ?? 'Couldn’t get your location.')
+                            : mapStatus === 'error'
+                              ? 'The map couldn’t load.'
+                              : parkingError
                         }
-                        setRevision((current) => current + 1)
-                        setMapRevision((current) => current + 1)
-                      }}
-                    />
-                  ) : undefined
+                        onRetry={() => {
+                          if (locationMessage) {
+                            centerOnMyLocation()
+                            return
+                          }
+                          setRevision((current) => current + 1)
+                          setMapRevision((current) => current + 1)
+                        }}
+                      />
+                    ) : undefined}
+                  </View>
                 }
                 renderItem={({ item: record }) => (
-                  <ParkingRow
-                    parking={record}
-                    reference={reference}
-                    onPress={() => select(record.id)}
-                    onDirections={() => startDirections(record)}
-                    onFavorite={() => favorite(record)}
-                    favorite={local.state.favorites.some(
-                      (item) => item.key === recordKey(record),
-                    )}
-                    disabled={local.status !== 'ready'}
-                    selected={selected?.id === record.id}
-                    testID={`parking-row-${record.id}`}
-                  />
+                  <View style={styles.resultRow}>
+                    <ParkingRow
+                      parking={record}
+                      reference={reference}
+                      onPress={() => select(record.id)}
+                      onDirections={() => startDirections(record)}
+                      onFavorite={() => favorite(record)}
+                      favorite={local.state.favorites.some(
+                        (item) => item.key === recordKey(record),
+                      )}
+                      disabled={local.status !== 'ready'}
+                      selected={selected?.id === record.id}
+                      testID={`parking-row-${record.id}`}
+                    />
+                  </View>
                 )}
                 ListEmptyComponent={
-                  parking.status === 'loading' && !samples ? (
+                  browseState === 'loading' ? (
                     <LoadingRows />
                   ) : (
-                    <View style={{ gap: 12, paddingVertical: 12 }}>
-                      <Text style={ui.heading}>
-                        {!parking.canQuery
-                          ? 'Zoom in to see mapped parking.'
-                          : filteredOut
-                            ? 'No parking matches this filter.'
-                            : 'No parking mapped here. Zoom out or Add parking.'}
-                      </Text>
-                      {filteredOut ? (
-                        <Button
-                          secondary
-                          onPress={() =>
-                            updateNavigation({ filter: 'all', fees: 'all' })
-                          }
-                        >
-                          Clear filters
-                        </Button>
-                      ) : null}
-                      <Button secondary onPress={() => startContribution()}>
-                        Add parking
-                      </Button>
-                    </View>
+                    <View style={{ padding: 16 }}>{stateCard}</View>
                   )
                 }
               />
@@ -1470,7 +1686,7 @@ export default function Explore() {
           <View
             style={{
               position: 'absolute',
-              bottom: Math.max(cameraBottom, insets.bottom) + 64,
+              top: insets.top + 12,
               left: 16,
               right: 16,
               zIndex: 20,
@@ -1487,7 +1703,7 @@ export default function Explore() {
           <View
             style={{
               position: 'absolute',
-              bottom: sheetHeight + tabHeight + 76,
+              bottom: sheetHeight + 76,
               alignSelf: 'center',
             }}
           >
@@ -1514,19 +1730,52 @@ export default function Explore() {
           <View
             style={[
               styles.mapInfo,
-              { bottom: Math.max(cameraBottom, insets.bottom) + 12 },
+              {
+                bottom:
+                  Math.max(cameraBottom, insets.bottom) +
+                  (discoveryVisible && !selected ? 72 : 12),
+              },
             ]}
           >
             <MapAttribution onPress={() => setPanel('info')} />
           </View>
         ) : null}
       </View>
+      {locationSettingsOpen ? (
+        <ModalSheet
+          title="Location settings"
+          onClose={() => setLocationSettingsOpen(false)}
+        >
+          <View style={{ padding: 24, gap: 16 }}>
+            <Text style={ui.body}>
+              {Platform.OS === 'web'
+                ? 'Open your browser’s site settings, allow location for Parkey, then try again.'
+                : 'Enable location access for Parkey in your device settings, then try again.'}
+            </Text>
+            <Button
+              onPress={() => {
+                setLocationSettingsOpen(false)
+                centerOnMyLocation()
+              }}
+            >
+              Try location again
+            </Button>
+          </View>
+        </ModalSheet>
+      ) : null}
       {panel === 'saved' ? (
         <SavedPlaces
           local={local}
-          onParkingDirections={startDirections}
           onLocateAddress={location.locate}
-          onAddPlace={() => updateNavigation({ panel: null, searching: true })}
+          onClose={() => setPanel(null)}
+          onAddPlace={() =>
+            updateNavigation({
+              panel: null,
+              selectedId: null,
+              searching: true,
+              position: 'expanded',
+            })
+          }
           records={[...parking.knownRecords, ...previews]}
           locating={location.status === 'locating'}
           locationError={saveLocationError ?? locationMessage}
@@ -1576,35 +1825,55 @@ export default function Explore() {
       ) : null}
       {panel === 'you' ? (
         <ParkingProfile
+          onClose={() => setPanel(null)}
           local={local}
-          contributions={storage === 'ready' ? drafts.length : null}
-          onSaved={() => setPanel('saved')}
-          onAdd={() => startContribution()}
-          onCar={() => setPanel('saved')}
-        />
-      ) : null}
-      {tabsVisible ? (
-        <BottomNavigation
-          selected={
-            panel === 'saved' ? 'saved' : panel === 'you' ? 'you' : 'map'
-          }
-          bottom={insets.bottom}
-          onHeightChange={setMeasuredTabHeight}
-          onSelect={(tab) => {
-            if (tab === 'add') startContribution()
-            else if (tab === 'map')
-              updateNavigation(
-                {
-                  panel: null,
-                  selectedId: null,
-                  searching: false,
-                  position: 'compact',
-                },
-                'replace',
-              )
-            else setPanel(tab === 'more' ? 'info' : tab)
+          drafts={drafts}
+          storage={storage}
+          onInfo={() => setPanel('info')}
+          onDeleteDraft={async (id) => {
+            if (saving.current || storage !== 'ready') return false
+            saving.current = true
+            try {
+              const next = drafts.filter((draft) => draft.id !== id)
+              await writeContributions(next)
+              setDrafts(next)
+              return true
+            } catch {
+              return false
+            } finally {
+              saving.current = false
+            }
           }}
         />
+      ) : null}
+      {menuOpen ? (
+        <ModalSheet title="parkey" onClose={() => setMenuOpen(false)}>
+          <View style={styles.menu}>
+            {(
+              [
+                { label: 'Saved places', action: () => setPanel('saved') },
+                { label: 'Add parking', action: () => startContribution() },
+                { label: 'Your parking', action: () => setPanel('you') },
+                { label: 'Map information', action: () => setPanel('info') },
+              ] as const
+            ).map((item) => (
+              <Pressable
+                key={item.label}
+                accessibilityRole="button"
+                onPress={() => {
+                  setMenuOpen(false)
+                  item.action()
+                }}
+                style={({ pressed }) => [
+                  styles.menuItem,
+                  pressed && ui.pressed,
+                ]}
+              >
+                <Text style={ui.heading}>{item.label}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </ModalSheet>
       ) : null}
       {panel === 'info' ? (
         <MapInformation
@@ -1621,6 +1890,16 @@ export default function Explore() {
           storage={storage}
           onStorageReady={() => setStorage('ready')}
           onClose={() => setPanel(null)}
+        />
+      ) : null}
+      {(discoveryVisible && !selected && !searchActive) || fullPageActive ? (
+        <BottomNavigation
+          selected={
+            panel === 'saved' ? 'saved' : panel === 'you' ? 'you' : 'map'
+          }
+          bottom={insets.bottom}
+          onAdd={() => startContribution()}
+          onSelect={(tab) => setPanel(tab === 'map' ? null : tab)}
         />
       ) : null}
     </View>
@@ -1648,6 +1927,38 @@ function StatusMessage({
   )
 }
 const styles = StyleSheet.create({
+  offlineBanner: {
+    backgroundColor: colors.surface,
+    borderRadius: 24,
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  offlineBadge: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.warningSurface,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingToast: {
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: colors.surface,
+    borderRadius: 999,
+  },
+  loadingDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.brand,
+  },
   screen: { flex: 1, backgroundColor: colors.canvas },
   mapNotices: {
     width: '100%',
@@ -1680,7 +1991,35 @@ const styles = StyleSheet.create({
     maxWidth: 620,
     alignSelf: 'center',
   },
-  filters: { gap: 8, paddingBottom: 4, paddingHorizontal: 16 },
+  mapHeader: { flexDirection: 'row', justifyContent: 'space-between' },
+  sheetContent: { gap: 24, paddingTop: 8, paddingBottom: 16 },
+  resultsHeading: { gap: 6, paddingHorizontal: 24 },
+  resultRow: { paddingHorizontal: 24 },
+  menu: { paddingHorizontal: 24, paddingBottom: 16 },
+  menuItem: { minHeight: 56, justifyContent: 'center' },
+  filterOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    maxWidth: 620,
+    marginHorizontal: 'auto',
+  },
+  nearbyStrip: {
+    paddingHorizontal: 16,
+    paddingBottom: 14,
+    gap: 12,
+    alignItems: 'flex-start',
+  },
+  nearbyEmpty: {
+    width: 300,
+    minHeight: 110,
+    padding: 16,
+    gap: 6,
+    borderRadius: 24,
+    backgroundColor: colors.soft,
+  },
+  filterStrip: { flexGrow: 0, flexShrink: 0 },
+  filters: { gap: 8, paddingHorizontal: 16 },
   addParking: {
     minWidth: 96,
     minHeight: 48,

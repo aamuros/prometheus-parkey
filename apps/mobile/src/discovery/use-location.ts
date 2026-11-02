@@ -1,18 +1,16 @@
 import type { Coordinate } from '@parkey/shared-types'
 import * as Location from 'expo-location'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Platform } from 'react-native'
+import { AppState, Platform } from 'react-native'
 
 export function useLocation() {
   const [point, setPoint] = useState<Coordinate | null>(null)
   const [status, setStatus] = useState<
     'idle' | 'locating' | 'denied' | 'error'
   >('idle')
-  const busy = useRef(false)
+  const pending = useRef<Promise<Coordinate | null> | null>(null)
   const active = useRef(true)
-  const locate = useCallback(async (): Promise<Coordinate | null> => {
-    if (busy.current) return null
-    busy.current = true
+  const request = useCallback(async (): Promise<Coordinate | null> => {
     setStatus('locating')
     let timer: ReturnType<typeof setTimeout> | undefined
     try {
@@ -66,14 +64,45 @@ export function useLocation() {
       if (active.current) setStatus(denied ? 'denied' : 'error')
       return null
     } finally {
-      busy.current = false
       clearTimeout(timer)
     }
   }, [])
+  const locate = useCallback((): Promise<Coordinate | null> => {
+    if (pending.current) return pending.current
+    const result = request()
+    pending.current = result
+    void result.finally(() => {
+      pending.current = null
+    })
+    return result
+  }, [request])
   useEffect(() => {
     active.current = true
+    async function checkPermission() {
+      try {
+        const denied =
+          Platform.OS === 'web'
+            ? 'permissions' in navigator &&
+              (await navigator.permissions.query({ name: 'geolocation' }))
+                .state === 'denied'
+            : (await Location.getForegroundPermissionsAsync()).status ===
+              'denied'
+        if (!active.current || pending.current) return
+        if (denied) {
+          setPoint(null)
+          setStatus('denied')
+        } else setStatus((current) => (current === 'denied' ? 'idle' : current))
+      } catch {
+        /* Unsupported permission queries leave manual search available. */
+      }
+    }
+    void checkPermission()
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void checkPermission()
+    })
     return () => {
       active.current = false
+      subscription.remove()
     }
   }, [])
   return { point, status, locate }

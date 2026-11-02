@@ -5,8 +5,10 @@ import type { DrivingRoute } from './routing'
 
 export type CameraTarget = { coordinate: Coordinate; revision: number }
 export type ParkingMapProps = {
+  night?: boolean
   records: DiscoveryParking[]
   selectedId: string | null
+  featuredId: string | null
   route: DrivingRoute | null
   navigation?:
     { following: boolean; along: number; onPan: () => void } | undefined

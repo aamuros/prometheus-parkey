@@ -85,7 +85,7 @@ export function MapInformation({
           <UndoToast message={toast.message} onUndo={toast.undo} />
         </View>
       ) : null}
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView style={ui.sheetScroll} contentContainerStyle={styles.content}>
         <Text style={ui.title}>Parking information</Text>
         <Text style={ui.body}>
           Parkey maps parking facilities and street segments. We don’t track

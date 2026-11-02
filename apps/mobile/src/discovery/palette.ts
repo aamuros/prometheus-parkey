@@ -1,7 +1,7 @@
 // Discovery UI and both map renderers share these semantic color roles.
 export const colors = {
   brand: '#8A1060',
-  brandDeep: '#710D4F',
+  brandDeep: '#62083F',
   accent: '#2E7F88',
   action: '#2E7F88',
   actionPressed: '#24666E',
@@ -15,8 +15,8 @@ export const colors = {
   selectedPressed: '#F0CEE2',
   positiveSurface: '#E1F0F1',
   disabledSurface: '#E9E6E2',
-  border: '#E9E6E2',
-  line: '#E9E6E2',
+  border: '#E4DFD8',
+  line: '#E4DFD8',
   amber: '#A85A06',
   warningSurface: '#FFF0D9',
   error: '#C23B3B',

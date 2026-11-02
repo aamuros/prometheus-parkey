@@ -2,6 +2,7 @@ import type { Coordinate, DiscoveryParking } from '@parkey/shared-types'
 
 import { anchor, distanceMeters, kindLabels } from './model.ts'
 import { spotHours } from './spot-hours.ts'
+import { parkingFee } from './parking-fee.ts'
 import type { WeekDay } from './spot-hours.ts'
 
 export type ParkingDetailRow = {
@@ -90,17 +91,7 @@ export function parkingDetailData(
     realName ?? (street ? `Street parking on ${street}` : 'Parking lot')
   const fees = text(parking.fees)
   const charge = get('charge')
-  const fee =
-    tags.fee === 'no' ||
-    /^(?:free(?: parking)?|no (?:fee|charge)|OSM records no fee; check posted signs)$/i.test(
-      fees ?? '',
-    )
-      ? 'Free'
-      : tags.fee === 'yes' ||
-          charge ||
-          /^(?:paid(?: parking)?|fee applies|PHP\s*\d|₱\s*\d)/i.test(fees ?? '')
-        ? (charge ?? (fees && /^(?:PHP|₱)/i.test(fees) ? fees : 'Paid'))
-        : undefined
+  const fee = parkingFee(parking)
   const hours = spotHours(
     get('opening_hours') ?? text(parking.hours),
     anchor(parking.geometry),
