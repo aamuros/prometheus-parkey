@@ -29,6 +29,7 @@ export function useRoute() {
       destination: Coordinate | ((origin: Coordinate) => Coordinate),
       locate: () => Promise<Coordinate | null>,
       rerouting = false,
+      heading?: number,
     ) => {
       controller.current?.abort()
       const request = new AbortController()
@@ -77,6 +78,7 @@ export function useRoute() {
           typeof destination === 'function' ? destination(from) : destination,
           request.signal,
           {
+            ...(heading === undefined ? {} : { heading }),
             ...(Platform.OS === 'web'
               ? {}
               : { userAgent: 'Parkey/0.1 (route preview)' }),

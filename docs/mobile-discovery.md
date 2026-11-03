@@ -10,8 +10,8 @@ to compact, medium, or expanded positions; accessible buttons provide the same
 actions. Selecting a marker or list row opens the medium parking preview. Closing
 it restores the previous browsing position. Get Directions
 opens an in-app driving route with a route line, distance, estimated travel time,
-and written maneuver instructions. Recalculate requests a new route from the
-current location; GPS updates do not automatically reroute. Other navigation apps
+and written maneuver instructions. Foreground navigation recalculates the route
+after sustained deviation or wrong-way travel. Other navigation apps
 remain an optional external handoff (Apple Maps on iOS, Google Maps, and Waze).
 Distances are explicitly straight-line distances to the selected destination,
 user location, or map center; each label identifies the reference.
@@ -214,24 +214,46 @@ Directions opens a preview using an existing location fix or the labeled map
 center; it never asks for location permission. Start explains the reason and
 starts a high-accuracy foreground location watch. Permission denial leaves the
 preview open with Google Maps, Apple Maps, and Waze links. Routing consent
-discloses that start and destination go directly to the configured routing
-provider, never through Parkey's backend.
+discloses that start, destination, and travel direction when rerouting go directly
+to the configured routing provider, never through Parkey's backend.
 
-Navigation ignores fixes worse than 100 m, smooths the dot and snaps it within
-25 m of the route. Maneuver progress and the gray traveled line are calculated
-on-device. Deviation beyond 50 m for at least five seconds triggers a new route,
-with at least 15 seconds between automatic requests. Requests have a 15-second
-timeout; changing or ending navigation aborts pending work. Public demo endpoints
-remain for modest non-commercial development testing only; throttling does not
-make them suitable for production navigation.
+Navigation rejects invalid coordinates, fixes older than 10 seconds, out-of-order
+timestamps, fixes worse than 100 m, and jumps exceeding plausible road speeds plus
+GPS uncertainty. Fixes worse than 40 m can update the raw location dot but cannot
+advance guidance or trigger rerouting. Local route matching scores distance,
+travel direction, and continuity within a movement-based progress window. The dot
+and maneuver progress use the same match, avoiding a second nearest-segment snap
+that could jump to a later crossing or parallel carriageway. Stationary compass
+headings are ignored. Matching geometry is indexed once per route.
+
+Maneuvers use per-step geometry lengths, with maneuver vertices and step distances
+as fallbacks. A turn stays visible until the match is at least 3 m past it.
+Remaining travel time interpolates the provider's per-step durations, falling
+back to distance-weighted time when absent. These are provider estimates without
+live traffic. Route requests limit road snapping at both ends to 100 m and reject
+responses whose geometry endpoints exceed that distance. Reroutes constrain the
+departure road to within 60 degrees of a reliable travel heading, when available;
+the destination approach remains unrestricted.
+
+Deviation beyond the larger of 50 m or twice the fix uncertainty, or consistent
+travel opposite the route direction, must persist across fresh samples for at
+least five seconds before rerouting. A missing GPS interval, uncertain fix,
+location error, or hidden browser tab clears confirmation evidence. There are at
+least 15 seconds between automatic requests. Requests have a 15-second timeout;
+changing or ending navigation aborts pending work. Public demo endpoints remain
+for modest non-commercial development testing only; throttling does not make
+them suitable for production navigation.
 
 The camera follows until a user gesture; Re-center resumes following. Web uses
 the Screen Wake Lock API where supported and reacquires it on return to a visible
 tab. End, X, Escape, and browser Back stop the watch and release the lock, with a
 five-second Resume toast. Tracking samples exist only in memory; navigation
 freezes backend parking-viewport queries and never writes GPS history to storage
-or the URL. Arrival within 30 m (or the route endpoint) stops tracking. I parked
-here explicitly saves one car coordinate and timestamp on this device; Next
+or the URL. Arrival requires at least three accurate fixes spanning two seconds,
+within the final 20 m of the route and 12–25 m of its endpoint, without a reported
+speed above 5 m/s. Being near the destination across another road or at the start
+of a loop is insufficient. Confirmed arrival stops tracking. I parked here
+explicitly saves one car coordinate and timestamp on this device; Next
 nearest uses already loaded real records of the same parking type, excluding
 session rejections. Availability is not inferred. No notification timers are
 offered because parking notifications are not implemented.
@@ -243,6 +265,18 @@ Distances and durations come from the route response; estimates exclude live
 traffic. Written instructions describe each maneuver and the distance to travel
 **after** it. Routes lead to a mapped location, which may not be the entrance.
 Voice guidance, background navigation, and live traffic are not included.
+
+The matching approach follows the public principles in
+[Google Roads snapping guidance](https://developers.google.com/maps/documentation/roads/snap)
+(use a sequence of nearby GPS points),
+[Mapbox location tracking](https://docs.mapbox.com/android/navigation/guides/device-location/)
+(match location before computing progress and detecting deviation), and the
+[OSRM API specification](https://github.com/Project-OSRM/osrm-backend/blob/master/docs/http.md)
+(step geometry/durations and bounded waypoint snapping). Parkey uses its existing
+OSRM provider and local heuristics; it does not include these providers' full
+road-graph matching engines or proprietary traffic data. Closely spaced roads
+and different road levels still need real-device calibration and better provider
+data. No additional service or location-history upload is introduced.
 
 The route is shown inside the existing native and web maps, fitted above the
 itinerary panel. The original optional external-navigation chooser remains

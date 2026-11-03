@@ -3,12 +3,16 @@ import * as Location from 'expo-location'
 import { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react'
 import { Platform } from 'react-native'
 
-import { routeProgress } from './drive-math'
+import {
+  createDriveTracker,
+  shouldReroute,
+  trackDriveFix,
+} from './drive-tracking'
+import type { DriveTracker, NavigationFix } from './drive-tracking'
 import { distanceMeters } from './model'
 import type { DrivingRoute } from './routing'
 
 export type DrivePhase = 'preview' | 'navigating' | 'arrived'
-type Fix = { point: Coordinate; accuracy: number; timestamp: number }
 
 export function useDriveNavigation({
   route,
@@ -18,12 +22,15 @@ export function useDriveNavigation({
 }: {
   route: DrivingRoute | null
   destination: Coordinate | null
-  reroute: (from: Coordinate, to: Coordinate) => Promise<unknown>
+  reroute: (
+    from: Coordinate,
+    to: Coordinate,
+    heading?: number,
+  ) => Promise<unknown>
   cancel: () => void
 }) {
-  const [progressState, setProgressState] = useState<ReturnType<
-    typeof routeProgress
-  > | null>(null)
+  const [progressState, setProgressState] =
+    useState<DriveTracker['progress']>(null)
   const [phase, setPhase] = useState<DrivePhase>('preview')
   const [tracking, setTracking] = useState(false)
   const [starting, setStarting] = useState(false)
@@ -33,29 +40,28 @@ export function useDriveNavigation({
   const [denied, setDenied] = useState(false)
   const [resumable, setResumable] = useState(false)
   const [rerouting, setRerouting] = useState(false)
-  const lastFix = useRef<Fix | null>(null)
-  const smoothed = useRef<Coordinate | null>(null)
-  const progress = useRef(0)
-  const currentRoute = useRef(route)
-  const offRouteSince = useRef<number | null>(null)
+  const tracker = useRef(createDriveTracker())
   const nextRequest = useRef(0)
   const pending = useRef(false)
   const generation = useRef(0)
 
   const start = useCallback(() => {
+    generation.current++
+    cancel()
+    pending.current = false
+    setRerouting(false)
     setMessage(null)
     setDenied(false)
     setStarting(true)
     setProgressState(null)
     setFollowing(true)
     setResumable(false)
-    lastFix.current = null
-    smoothed.current = null
-    offRouteSince.current = null
+    tracker.current = createDriveTracker()
+    setPosition(null)
     // Includes the initial route request in the navigation request budget.
     nextRequest.current = Date.now() + 15000
     setTracking(true)
-  }, [])
+  }, [cancel])
   const stop = useCallback(
     (resume = true) => {
       generation.current++
@@ -66,10 +72,8 @@ export function useDriveNavigation({
       setResumable(resume)
       setRerouting(false)
       pending.current = false
-      lastFix.current = null
-      smoothed.current = null
+      tracker.current = createDriveTracker()
       setPosition(null)
-      offRouteSince.current = null
     },
     [cancel],
   )
@@ -79,43 +83,19 @@ export function useDriveNavigation({
     return () => clearTimeout(timer)
   }, [resumable])
 
-  const acceptFix = useEffectEvent((fix: Fix) => {
-    if (
-      !tracking ||
-      !Number.isFinite(fix.accuracy) ||
-      fix.accuracy > 100 ||
-      Date.now() - fix.timestamp > 15000
-    )
-      return
-    lastFix.current = fix
+  const acceptFix = useEffectEvent((fix: NavigationFix) => {
+    if (!tracking) return
+    if (Platform.OS === 'web' && document.visibilityState !== 'visible') return
+    const updated = trackDriveFix(tracker.current, route, fix)
+    if (updated === tracker.current) return
+    tracker.current = updated
     setStarting(false)
     setPhase('navigating')
     setMessage(null)
-    if (currentRoute.current !== route) {
-      currentRoute.current = route
-      progress.current = 0
-    }
-    const state = route
-      ? routeProgress(route, fix.point, progress.current)
-      : null
+    const state = updated.progress
     setProgressState(state)
-    if (state) progress.current = state.along
-    const before = smoothed.current
-    const smooth: Coordinate =
-      before && distanceMeters(before, fix.point) < 100
-        ? [
-            before[0] + (fix.point[0] - before[0]) * 0.65,
-            before[1] + (fix.point[1] - before[1]) * 0.65,
-          ]
-        : fix.point
-    smoothed.current = smooth
-    const snapped = route ? routeProgress(route, smooth) : null
-    setPosition(snapped && snapped.distance <= 25 ? snapped.point : smooth)
-    if (
-      destination &&
-      (distanceMeters(fix.point, destination) <= 30 ||
-        (state && state.distance <= 30 && state.length - state.along <= 15))
-    ) {
+    setPosition(updated.position)
+    if (destination && updated.arrived) {
       generation.current++
       cancel()
       setPosition(fix.point)
@@ -129,8 +109,9 @@ export function useDriveNavigation({
       starting &&
       state &&
       route &&
+      fix.accuracy <= 40 &&
       distanceMeters(fix.point, route.geometry.coordinates[0] ?? fix.point) >
-        25 &&
+        Math.max(25, fix.accuracy) &&
       destination &&
       !pending.current
     ) {
@@ -139,17 +120,20 @@ export function useDriveNavigation({
       setRerouting(true)
       cancel()
       const requestGeneration = generation.current
-      void reroute(fix.point, destination).finally(() => {
+      void reroute(
+        fix.point,
+        destination,
+        updated.heading ?? undefined,
+      ).finally(() => {
         if (requestGeneration !== generation.current) return
         pending.current = false
         setRerouting(false)
-        offRouteSince.current = null
+        tracker.current = { ...tracker.current, deviation: null }
       })
     }
-    if (state && state.distance > 50) offRouteSince.current ??= Date.now()
-    else offRouteSince.current = null
   })
   const fail = useEffectEvent((permissionDenied: boolean) => {
+    tracker.current = { ...tracker.current, deviation: null, arrival: null }
     setDenied(permissionDenied)
     setMessage(
       permissionDenied
@@ -182,6 +166,8 @@ export function useDriveNavigation({
               point: [fix.coords.longitude, fix.coords.latitude],
               accuracy: fix.coords.accuracy,
               timestamp: fix.timestamp,
+              heading: fix.coords.heading,
+              speed: fix.coords.speed,
             })
         },
         (error) => {
@@ -201,7 +187,7 @@ export function useDriveNavigation({
         const subscription = await Location.watchPositionAsync(
           {
             accuracy: Location.Accuracy.High,
-            distanceInterval: 2,
+            distanceInterval: 0,
             timeInterval: 1000,
           },
           (fix) => {
@@ -210,6 +196,8 @@ export function useDriveNavigation({
                 point: [fix.coords.longitude, fix.coords.latitude],
                 accuracy: fix.coords.accuracy ?? Infinity,
                 timestamp: fix.timestamp,
+                heading: fix.coords.heading,
+                speed: fix.coords.speed,
               })
           },
         )
@@ -226,15 +214,13 @@ export function useDriveNavigation({
   }, [tracking])
 
   const checkOffRoute = useEffectEvent(() => {
-    const fix = lastFix.current
+    const fix = tracker.current.fix
     if (
       !tracking ||
       phase !== 'navigating' ||
       !destination ||
       !fix ||
-      Date.now() - fix.timestamp > 10000 ||
-      offRouteSince.current === null ||
-      Date.now() - offRouteSince.current < 5000 ||
+      !shouldReroute(tracker.current) ||
       Date.now() < nextRequest.current ||
       pending.current
     )
@@ -245,11 +231,15 @@ export function useDriveNavigation({
     setRerouting(true)
     cancel()
     const requestGeneration = generation.current
-    void reroute(fix.point, destination).finally(() => {
+    void reroute(
+      fix.point,
+      destination,
+      tracker.current.heading ?? undefined,
+    ).finally(() => {
       if (requestGeneration !== generation.current) return
       pending.current = false
       setRerouting(false)
-      offRouteSince.current = null
+      tracker.current = { ...tracker.current, deviation: null }
     })
   })
   useEffect(() => {
@@ -287,7 +277,7 @@ export function useDriveNavigation({
     function visibility() {
       if (document.visibilityState === 'visible') {
         // A hidden interval is never evidence of continuous deviation.
-        offRouteSince.current = null
+        tracker.current = { ...tracker.current, deviation: null, arrival: null }
         void acquire()
       }
     }

@@ -176,7 +176,65 @@ test('route requests preserve endpoint prefixes and request car geometry and wri
   assert.equal(requested.searchParams.get('overview'), 'full')
   assert.equal(requested.searchParams.get('steps'), 'true')
   assert.equal(requested.searchParams.get('alternatives'), 'false')
+  assert.equal(requested.searchParams.get('radiuses'), '100;100')
+  assert.equal(requested.searchParams.get('bearings'), null)
   assert.equal(route.steps.length, 3)
+})
+
+test('reroute requests use a trusted departure heading without constraining the parking approach', async () => {
+  for (const [heading, expected] of [
+    [269.6, '270,60;'],
+    [360, '0,60;'],
+    [NaN, null],
+    [-1, null],
+  ]) {
+    await fetchDrivingRoute(origin, destination, new AbortController().signal, {
+      endpoint,
+      heading,
+      fetcher: async (url) => {
+        assert.equal(new URL(url).searchParams.get('bearings'), expected)
+        return reply(fixture())
+      },
+    })
+  }
+})
+
+test('per-step geometry lengths and durations are retained for accurate guidance', () => {
+  const value = fixture()
+  const steps = value.routes[0].legs[0].steps
+  steps[0].duration = 20
+  steps[0].geometry = {
+    type: 'LineString',
+    coordinates: [origin, steps[1].maneuver.location],
+  }
+  const route = parseDrivingRoute(value)
+  assert.equal(route.steps[0].duration, 20)
+  assert.ok(route.steps[0].geometryDistance > 110)
+  assert.ok(route.steps[0].geometryDistance < 112)
+  for (const invalid of [
+    { duration: -1 },
+    { duration: NaN },
+    { geometry: { type: 'LineString', coordinates: [origin] } },
+    { geometry: { type: 'LineString', coordinates: [origin, [NaN, 0]] } },
+  ]) {
+    const broken = fixture()
+    Object.assign(broken.routes[0].legs[0].steps[0], invalid)
+    assert.throws(() => parseDrivingRoute(broken), /invalid route/)
+  }
+})
+
+test('routes snapped to a distant road are rejected even if the provider ignores radiuses', async () => {
+  for (const position of [0, 2]) {
+    const value = fixture()
+    value.routes[0].geometry.coordinates[position] = [122, 15]
+    await assert.rejects(
+      fetchDrivingRoute(origin, destination, new AbortController().signal, {
+        endpoint,
+        fetcher: async () => reply(value),
+      }),
+      /No drivable road was found close enough/,
+    )
+  }
 })
 
 test('unconfigured routing and invalid coordinates do not make network calls', async () => {

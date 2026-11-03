@@ -1,7 +1,7 @@
 import type { Coordinate } from '@parkey/shared-types'
 
 import { config } from './config.ts'
-import { isCoordinate, isObject } from './model.ts'
+import { distanceMeters, isCoordinate, isObject } from './model.ts'
 
 export type DrivingStep = {
   instruction: string
@@ -10,6 +10,8 @@ export type DrivingStep = {
   modifier: string
   distance: number
   location: Coordinate
+  duration?: number
+  geometryDistance?: number
 }
 export type DrivingRoute = {
   geometry: { type: 'LineString'; coordinates: Coordinate[] }
@@ -19,6 +21,9 @@ export type DrivingRoute = {
 }
 
 class RoutingError extends Error {}
+
+// Do not silently route to a distant road when a parking location is unmapped.
+const MAX_WAYPOINT_DISTANCE = 100
 
 function nonnegative(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0
@@ -150,6 +155,26 @@ export function parseDrivingRoute(value: unknown): DrivingRoute {
       !isCoordinate(step.maneuver.location)
     )
       throw invalid()
+    if (step.duration !== undefined && !nonnegative(step.duration))
+      throw invalid()
+    let geometryDistance: number | undefined
+    if (step.geometry !== undefined) {
+      if (
+        !isObject(step.geometry) ||
+        step.geometry.type !== 'LineString' ||
+        !Array.isArray(step.geometry.coordinates) ||
+        step.geometry.coordinates.length < 2 ||
+        step.geometry.coordinates.length > 50000 ||
+        !step.geometry.coordinates.every(isCoordinate)
+      )
+        throw invalid()
+      geometryDistance = 0
+      for (let i = 1; i < step.geometry.coordinates.length; i++) {
+        const a = step.geometry.coordinates[i - 1]
+        const b = step.geometry.coordinates[i]
+        if (a && b) geometryDistance += distanceMeters(a, b)
+      }
+    }
     return {
       instruction: instruction(step.maneuver, roadName(step)),
       road: roadName(step),
@@ -160,6 +185,8 @@ export function parseDrivingRoute(value: unknown): DrivingRoute {
           : '',
       distance: step.distance,
       location: step.maneuver.location,
+      ...(step.duration === undefined ? {} : { duration: step.duration }),
+      ...(geometryDistance === undefined ? {} : { geometryDistance }),
     }
   })
   return {
@@ -178,7 +205,13 @@ export async function fetchDrivingRoute(
     endpoint = config.routingUrl,
     fetcher = fetch,
     userAgent,
-  }: { endpoint?: string; fetcher?: typeof fetch; userAgent?: string } = {},
+    heading,
+  }: {
+    endpoint?: string
+    fetcher?: typeof fetch
+    userAgent?: string
+    heading?: number
+  } = {},
 ): Promise<DrivingRoute> {
   if (!endpoint)
     throw new Error(
@@ -217,7 +250,10 @@ export async function fetchDrivingRoute(
     steps: 'true',
     alternatives: 'false',
     generate_hints: 'false',
+    radiuses: `${MAX_WAYPOINT_DISTANCE};${MAX_WAYPOINT_DISTANCE}`,
   }).toString()
+  if (nonnegative(heading) && heading <= 360)
+    url.searchParams.set('bearings', `${Math.round(heading) % 360},60;`)
   const controller = new AbortController()
   const cancel = () => controller.abort()
   signal.addEventListener('abort', cancel, { once: true })
@@ -249,7 +285,18 @@ export async function fetchDrivingRoute(
         'The routing service is unavailable. Try again shortly.',
       )
     }
-    return parseDrivingRoute(await response.json())
+    const value: unknown = await response.json()
+    const route = parseDrivingRoute(value)
+    const start = route.geometry.coordinates[0]
+    const end = route.geometry.coordinates.at(-1)
+    if (
+      (start && distanceMeters(from, start) > MAX_WAYPOINT_DISTANCE) ||
+      (end && distanceMeters(to, end) > MAX_WAYPOINT_DISTANCE)
+    )
+      throw new RoutingError(
+        'No drivable road was found close enough to the start or destination. Try another location.',
+      )
+    return route
   } catch (error) {
     if (timedOut)
       throw new Error('The route request took too long. Please try again.', {

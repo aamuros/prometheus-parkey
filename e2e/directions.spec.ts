@@ -86,15 +86,24 @@ test('arriving allows parking confirmation and saves the car location', async ({
     .getByRole('button', { name: 'Continue', exact: true })
     .click()
   await expect(page.getByTestId('navigation-banner')).toBeVisible()
-  await context.setGeolocation({
-    longitude: spot.longitude,
-    latitude: spot.latitude,
-    accuracy: 5,
-  })
   const panel = page.getByTestId('route-panel')
-  await expect(
-    panel.getByRole('heading', { name: 'You made it!', exact: true }),
-  ).toBeVisible()
+  // Feed fresh fixes until arrival is confirmed. A single teleported sample
+  // must not complete navigation, and a stopped browser watch emits no ticks.
+  await expect
+    .poll(
+      async () => {
+        await context.setGeolocation({
+          longitude: spot.longitude,
+          latitude: spot.latitude,
+          accuracy: 5,
+        })
+        return panel
+          .getByRole('heading', { name: 'You made it!', exact: true })
+          .isVisible()
+      },
+      { intervals: [1000], timeout: 12000 },
+    )
+    .toBe(true)
   await panel
     .getByRole('button', { name: 'I parked here', exact: true })
     .click()

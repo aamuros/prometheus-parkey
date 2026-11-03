@@ -249,7 +249,8 @@ export default function Explore() {
     null,
   )
   const reroute = useCallback(
-    (from: Coordinate, to: Coordinate) => loadRoute(to, async () => from, true),
+    (from: Coordinate, to: Coordinate, heading?: number) =>
+      loadRoute(to, async () => from, true, heading),
     [loadRoute],
   )
   const drive = useDriveNavigation({

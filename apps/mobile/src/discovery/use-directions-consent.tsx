@@ -69,7 +69,7 @@ export function useDirectionsConsent(
             </Text>
             <Text style={ui.body}>
               Directions use an external routing service, which receives your
-              start and destination.
+              start, destination, and direction of travel when rerouting.
             </Text>
             <Text style={ui.small}>
               Not sent through Parkey’s servers. We ask once.

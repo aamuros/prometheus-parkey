@@ -21,9 +21,11 @@ Expo Go displays a build requirement. OSRM-compatible requests supply route
 geometry, estimates, and maneuvers, with response validation, cancellation,
 timeouts, and a client cooldown. The public demo is a non-commercial development
 default only; production requires an explicitly configured routing service.
-Routes are requested or recalculated by the user, never automatically on GPS
-updates. No live traffic or voice navigation is implemented. Location and signage photos use
-Expo-supported modules. Local contribution drafts use AsyncStorage; nothing
+Routes start with a user request. Foreground navigation matches fresh GPS fixes
+against route progress and travel direction, then reroutes after sustained
+deviation or wrong-way travel. No live traffic or voice navigation is implemented.
+Location and signage photos use Expo-supported modules. Local contribution drafts
+use AsyncStorage; nothing
 uploads automatically. This persistence is not a moderation backend.
 
 The data layer combines an attributed OSM pilot snapshot with optional published
